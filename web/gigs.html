@@ -8,8 +8,13 @@
 </head>
 <body>
   <main class="content">
-    <h1>Gigs</h1>
-    <p class="subtitle">Fiverr has no gig-write API, so edits here update your local copy only — not your live Fiverr gig (see docs/fiverr-api-capabilities.md).</p>
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <h1>Gigs</h1>
+        <p class="subtitle">Fiverr has no gig-write API, so gigs here are your local drafts — use "Copy to Fiverr" to paste them into Fiverr's own gig editor yourself (see docs/fiverr-api-capabilities.md).</p>
+      </div>
+      <a href="/gig-new.html" class="btn btn-primary">+ New Gig</a>
+    </div>
 
     <div class="grid grid-2" id="gigs-grid">
       <p class="muted">Loading…</p>
@@ -23,7 +28,7 @@
       const { gigs } = await apiJSON("/gigs");
       const grid = document.getElementById("gigs-grid");
       if (!gigs || !gigs.length) {
-        grid.innerHTML = '<p class="muted">No gigs yet. Import a CSV from Settings.</p>';
+        grid.innerHTML = '<p class="muted">No gigs yet. <a href="/gig-new.html">Create one</a> or import a CSV from Settings.</p>';
         return;
       }
       grid.innerHTML = gigs
@@ -32,7 +37,8 @@
             `<div class="card"><h2>${escapeHTML(g.title)}</h2>` +
             `<p class="muted">${escapeHTML(g.category || "Uncategorized")} · <span class="badge badge-status">${escapeHTML(g.status)}</span></p>` +
             `<p>${formatCents(g.base_price_cents, g.currency)} starting</p>` +
-            `<p>${escapeHTML(g.description || "").slice(0, 160)}</p></div>`
+            `<p>${escapeHTML(g.description || "").slice(0, 160)}</p>` +
+            `<a class="btn btn-primary btn-sm" href="/gig-copy.html?id=${g.id}">Copy to Fiverr</a></div>`
         )
         .join("");
     }

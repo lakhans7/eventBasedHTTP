@@ -1,0 +1,194 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>New Gig — Fiverr Seller Hub</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <main class="content">
+    <h1>New gig</h1>
+    <p class="subtitle">
+      This saves to your dashboard only — Fiverr has no gig-write API, so nothing here touches your live
+      Fiverr listing (see docs/fiverr-api-capabilities.md). Fill this in once, then use
+      <strong>Copy to Fiverr</strong> on the gig to paste each field into Fiverr's own gig editor, in order.
+    </p>
+    <div id="error" class="error-banner" style="display:none"></div>
+
+    <form id="gig-form">
+      <div class="card mb-16">
+        <h2>1. Overview</h2>
+        <p class="subtitle">What Fiverr's "Overview" step of the gig wizard asks for.</p>
+        <div class="field"><label for="fiverr-account">Fiverr profile</label><select id="fiverr-account"></select></div>
+        <div class="field"><label for="title">Gig title</label><input id="title" required maxlength="80" placeholder="I will build a production-ready Go REST API" /></div>
+        <div class="grid grid-2">
+          <div class="field"><label for="category">Category</label><input id="category" placeholder="Programming &amp; Tech" /></div>
+          <div class="field"><label for="sub-category">Sub-category</label><input id="sub-category" placeholder="Backend Development" /></div>
+        </div>
+        <div class="field"><label for="tags">Search tags (comma-separated, up to 5)</label><input id="tags" placeholder="golang, api, backend, postgresql, docker" /></div>
+      </div>
+
+      <div class="card mb-16">
+        <h2>2. Pricing</h2>
+        <p class="subtitle">Fiverr's Pricing step: Basic is required, Standard/Premium are optional.</p>
+
+        <div class="field">
+          <label>Basic package</label>
+          <div class="grid grid-2">
+            <input id="basic-price" type="number" min="5" placeholder="Price (USD)" required />
+            <input id="basic-delivery" type="number" min="1" placeholder="Delivery days" required />
+          </div>
+          <textarea id="basic-desc" rows="2" placeholder="What's included in Basic" class="mt-16"></textarea>
+        </div>
+
+        <div class="field">
+          <label><input type="checkbox" id="enable-standard" /> Add a Standard package</label>
+          <div id="standard-fields" style="display:none">
+            <div class="grid grid-2">
+              <input id="standard-price" type="number" min="5" placeholder="Price (USD)" />
+              <input id="standard-delivery" type="number" min="1" placeholder="Delivery days" />
+            </div>
+            <textarea id="standard-desc" rows="2" placeholder="What's included in Standard" class="mt-16"></textarea>
+          </div>
+        </div>
+
+        <div class="field">
+          <label><input type="checkbox" id="enable-premium" /> Add a Premium package</label>
+          <div id="premium-fields" style="display:none">
+            <div class="grid grid-2">
+              <input id="premium-price" type="number" min="5" placeholder="Price (USD)" />
+              <input id="premium-delivery" type="number" min="1" placeholder="Delivery days" />
+            </div>
+            <textarea id="premium-desc" rows="2" placeholder="What's included in Premium" class="mt-16"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="card mb-16">
+        <h2>3. Description &amp; FAQ</h2>
+        <div class="field"><label for="description">Gig description</label><textarea id="description" rows="8" required placeholder="Describe what you offer, your process, and why buyers should choose you…"></textarea></div>
+        <label>FAQs</label>
+        <div id="faq-list"></div>
+        <button type="button" id="add-faq" class="btn btn-sm mt-16">+ Add FAQ</button>
+      </div>
+
+      <div class="card mb-16">
+        <h2>4. Requirements</h2>
+        <p class="subtitle">What Fiverr asks the buyer to provide before you start work.</p>
+        <div class="field"><textarea id="buyer-requirements" rows="3" placeholder="e.g. Please share your API spec, expected traffic, and preferred authentication method."></textarea></div>
+      </div>
+
+      <div class="info-note mb-16">Fiverr's Gallery step (images/video/PDF) has no text to copy — upload those directly in Fiverr's editor.</div>
+
+      <button type="submit" class="btn btn-primary">Save gig</button>
+    </form>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/nav.js"></script>
+  <script>
+    document.getElementById("enable-standard").addEventListener("change", (e) => {
+      document.getElementById("standard-fields").style.display = e.target.checked ? "block" : "none";
+    });
+    document.getElementById("enable-premium").addEventListener("change", (e) => {
+      document.getElementById("premium-fields").style.display = e.target.checked ? "block" : "none";
+    });
+
+    let faqCount = 0;
+    function addFAQRow() {
+      const id = faqCount++;
+      const div = document.createElement("div");
+      div.className = "field";
+      div.dataset.faqRow = id;
+      div.innerHTML =
+        `<input placeholder="Question" data-faq-q="${id}" />` +
+        `<textarea rows="2" placeholder="Answer" class="mt-16" data-faq-a="${id}"></textarea>` +
+        `<button type="button" class="btn btn-sm btn-danger mt-16" data-remove-faq="${id}">Remove</button>`;
+      document.getElementById("faq-list").appendChild(div);
+      div.querySelector(`[data-remove-faq="${id}"]`).addEventListener("click", () => div.remove());
+    }
+    document.getElementById("add-faq").addEventListener("click", addFAQRow);
+
+    function collectFAQs() {
+      return Array.from(document.querySelectorAll("[data-faq-row]"))
+        .map((row) => ({
+          q: row.querySelector("[data-faq-q]").value.trim(),
+          a: row.querySelector("[data-faq-a]").value.trim(),
+        }))
+        .filter((f) => f.q && f.a);
+    }
+
+    function collectPackages() {
+      const packages = [
+        {
+          name: "Basic",
+          price_cents: Math.round(Number(document.getElementById("basic-price").value) * 100),
+          delivery_days: Number(document.getElementById("basic-delivery").value),
+          description: document.getElementById("basic-desc").value,
+        },
+      ];
+      if (document.getElementById("enable-standard").checked) {
+        packages.push({
+          name: "Standard",
+          price_cents: Math.round(Number(document.getElementById("standard-price").value) * 100),
+          delivery_days: Number(document.getElementById("standard-delivery").value),
+          description: document.getElementById("standard-desc").value,
+        });
+      }
+      if (document.getElementById("enable-premium").checked) {
+        packages.push({
+          name: "Premium",
+          price_cents: Math.round(Number(document.getElementById("premium-price").value) * 100),
+          delivery_days: Number(document.getElementById("premium-delivery").value),
+          description: document.getElementById("premium-desc").value,
+        });
+      }
+      return packages;
+    }
+
+    document.getElementById("gig-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById("error");
+      errorEl.style.display = "none";
+      const packages = collectPackages();
+      try {
+        const res = await apiJSON("/gigs", {
+          method: "POST",
+          body: {
+            fiverr_account_id: document.getElementById("fiverr-account").value,
+            title: document.getElementById("title").value,
+            category: document.getElementById("category").value,
+            sub_category: document.getElementById("sub-category").value,
+            tags: document.getElementById("tags").value.split(",").map((t) => t.trim()).filter(Boolean).slice(0, 5),
+            base_price_cents: packages[0].price_cents,
+            currency: "usd",
+            packages,
+            description: document.getElementById("description").value,
+            faqs: collectFAQs(),
+            buyer_requirements: document.getElementById("buyer-requirements").value,
+          },
+        });
+        location.href = "/gig-copy.html?id=" + res.gig.id;
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.style.display = "block";
+      }
+    });
+
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+      renderShell("gigs.html");
+      const { accounts } = await apiJSON("/fiverr/accounts");
+      const select = document.getElementById("fiverr-account");
+      if (!accounts || !accounts.length) {
+        select.innerHTML = '<option value="">Add a Fiverr profile in Settings first</option>';
+      } else {
+        select.innerHTML = accounts.map((a) => `<option value="${a.id}">${escapeHTML(a.username)}</option>`).join("");
+      }
+      addFAQRow();
+    })();
+  </script>
+</body>
+</html>

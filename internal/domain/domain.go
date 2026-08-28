@@ -89,21 +89,30 @@ const (
 	GigStatusUnknown = "unknown"
 )
 
+// Gig fields below mirror the sections of Fiverr's own gig-creation wizard
+// (Overview / Pricing / Description & FAQ / Requirements) so the "copy to
+// Fiverr" flow (web/gig-copy.html) can present them in the same order a
+// seller fills them into Fiverr's real gig editor. Nothing here is ever sent
+// to Fiverr — there is no gig-write API (docs/fiverr-api-capabilities.md).
 type Gig struct {
-	ID              string       `json:"id"`
-	FiverrAccountID string       `json:"fiverr_account_id"`
-	ExternalRef     *string      `json:"external_ref,omitempty"`
-	Title           string       `json:"title"`
-	Description     string       `json:"description,omitempty"`
-	Category        string       `json:"category,omitempty"`
-	Status          string       `json:"status"`
-	BasePriceCents  int64        `json:"base_price_cents"`
-	Currency        string       `json:"currency"`
-	Packages        []GigPackage `json:"packages,omitempty"`
-	Metrics         *GigMetrics  `json:"metrics,omitempty"`
-	Source          string       `json:"source"`
-	CreatedAt       time.Time    `json:"created_at"`
-	UpdatedAt       time.Time    `json:"updated_at"`
+	ID                string       `json:"id"`
+	FiverrAccountID   string       `json:"fiverr_account_id"`
+	ExternalRef       *string      `json:"external_ref,omitempty"`
+	Title             string       `json:"title"`
+	Category          string       `json:"category,omitempty"`
+	SubCategory       string       `json:"sub_category,omitempty"`
+	Tags              []string     `json:"tags,omitempty"`
+	Status            string       `json:"status"`
+	BasePriceCents    int64        `json:"base_price_cents"`
+	Currency          string       `json:"currency"`
+	Packages          []GigPackage `json:"packages,omitempty"`
+	Description       string       `json:"description,omitempty"`
+	FAQs              []FAQ        `json:"faqs,omitempty"`
+	BuyerRequirements string       `json:"buyer_requirements,omitempty"`
+	Metrics           *GigMetrics  `json:"metrics,omitempty"`
+	Source            string       `json:"source"`
+	CreatedAt         time.Time    `json:"created_at"`
+	UpdatedAt         time.Time    `json:"updated_at"`
 }
 
 const (

@@ -94,6 +94,7 @@ func NewApp(d Deps) *fiber.App {
 
 	gigs := v1.Group("/gigs", requireAuth)
 	gigs.Get("/", d.Resources.ListGigs)
+	gigs.Post("/", d.Resources.CreateGig)
 	gigs.Get("/:id", d.Resources.GetGig)
 	gigs.Patch("/:id", d.Resources.PatchGig)
 

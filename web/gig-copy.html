@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Copy to Fiverr — Fiverr Seller Hub</title>
+  <link rel="stylesheet" href="/css/app.css" />
+  <style>
+    .copy-field { display: flex; gap: 8px; align-items: flex-start; margin-bottom: 14px; }
+    .copy-field textarea, .copy-field input { flex: 1; }
+    .copy-field textarea[readonly], .copy-field input[readonly] { background: #f9fafb; }
+    .copy-btn { flex-shrink: 0; white-space: nowrap; }
+    .copy-btn.copied { background: var(--primary); color: #fff; border-color: var(--primary); }
+    .step-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-muted); margin-bottom: 4px; }
+  </style>
+</head>
+<body>
+  <main class="content">
+    <h1 id="gig-title">Copy to Fiverr</h1>
+    <p class="subtitle">
+      Open Fiverr's "Create a New Gig" editor in another tab, then copy each field below into the matching
+      step, in this order. Fiverr's exact field names/limits can change — treat this as a checklist, not a
+      guarantee of an exact match. Nothing on this page ever talks to Fiverr (docs/fiverr-api-capabilities.md).
+    </p>
+
+    <div id="body">
+      <p class="muted">Loading…</p>
+    </div>
+
+    <div class="card mt-16">
+      <a href="/gigs.html" class="btn btn-sm">&larr; Back to gigs</a>
+    </div>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/nav.js"></script>
+  <script>
+    function copyField(label, value, multiline) {
+      const wrap = document.createElement("div");
+      wrap.className = "copy-field";
+      const el = document.createElement(multiline ? "textarea" : "input");
+      if (multiline) el.rows = 4;
+      el.readOnly = true;
+      el.value = value || "";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "btn btn-sm copy-btn";
+      btn.textContent = "Copy";
+      btn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(el.value);
+          btn.textContent = "Copied";
+          btn.classList.add("copied");
+          setTimeout(() => { btn.textContent = "Copy"; btn.classList.remove("copied"); }, 1500);
+        } catch (e) {
+          el.select();
+          document.execCommand("copy");
+        }
+      });
+      const field = document.createElement("div");
+      field.style.flex = "1";
+      const labelEl = document.createElement("div");
+      labelEl.className = "step-label";
+      labelEl.textContent = label;
+      field.appendChild(labelEl);
+      field.appendChild(el);
+      wrap.appendChild(field);
+      wrap.appendChild(btn);
+      return wrap;
+    }
+
+    function section(title, subtitle) {
+      const card = document.createElement("div");
+      card.className = "card mb-16";
+      const h = document.createElement("h2");
+      h.textContent = title;
+      card.appendChild(h);
+      if (subtitle) {
+        const p = document.createElement("p");
+        p.className = "subtitle";
+        p.textContent = subtitle;
+        card.appendChild(p);
+      }
+      return card;
+    }
+
+    function formatUSD(cents) {
+      return "$" + ((cents || 0) / 100).toFixed(2);
+    }
+
+    async function render() {
+      const id = new URLSearchParams(location.search).get("id");
+      if (!id) {
+        document.getElementById("body").innerHTML = '<p class="error-banner">No gig id given.</p>';
+        return;
+      }
+      let gig;
+      try {
+        const res = await apiJSON(`/gigs/${id}`);
+        gig = res.gig;
+      } catch (err) {
+        document.getElementById("body").innerHTML = `<div class="error-banner">${escapeHTML(err.message)}</div>`;
+        return;
+      }
+
+      document.getElementById("gig-title").textContent = "Copy to Fiverr: " + gig.title;
+      const body = document.getElementById("body");
+      body.innerHTML = "";
+
+      const overview = section("1. Overview", "Fiverr's first gig-wizard step.");
+      overview.appendChild(copyField("Gig title", gig.title, false));
+      overview.appendChild(copyField("Category", gig.category, false));
+      overview.appendChild(copyField("Sub-category", gig.sub_category, false));
+      overview.appendChild(copyField("Search tags", (gig.tags || []).join(", "), false));
+      body.appendChild(overview);
+
+      const pricing = section("2. Pricing", "Copy each package into its matching tier.");
+      (gig.packages || []).forEach((pkg) => {
+        pricing.appendChild(copyField(`${pkg.name} — package name`, pkg.name, false));
+        pricing.appendChild(copyField(`${pkg.name} — price`, formatUSD(pkg.price_cents), false));
+        pricing.appendChild(copyField(`${pkg.name} — delivery time (days)`, String(pkg.delivery_days || ""), false));
+        pricing.appendChild(copyField(`${pkg.name} — description`, pkg.description, true));
+      });
+      if (!gig.packages || !gig.packages.length) {
+        pricing.innerHTML += '<p class="muted">No packages saved for this gig.</p>';
+      }
+      body.appendChild(pricing);
+
+      const desc = section("3. Description & FAQ");
+      desc.appendChild(copyField("Gig description", gig.description, true));
+      (gig.faqs || []).forEach((faq, i) => {
+        desc.appendChild(copyField(`FAQ ${i + 1} — question`, faq.q, false));
+        desc.appendChild(copyField(`FAQ ${i + 1} — answer`, faq.a, true));
+      });
+      body.appendChild(desc);
+
+      const req = section("4. Requirements", "What Fiverr asks the buyer to submit before you start.");
+      req.appendChild(copyField("Buyer requirements", gig.buyer_requirements, true));
+      body.appendChild(req);
+
+      const gallery = section("5. Gallery");
+      gallery.innerHTML += '<p class="info-note">No text to copy here — upload your images/video/PDF directly in Fiverr\'s editor.</p>';
+      body.appendChild(gallery);
+    }
+
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+      renderShell("gigs.html");
+      await render();
+    })();
+  </script>
+</body>
+</html>

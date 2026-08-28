@@ -28,6 +28,62 @@ func errJSON(c *fiber.Ctx, status int, code, message string) error {
 
 // --- Gigs ---
 
+// createGigRequest mirrors Fiverr's own gig-creation wizard sections
+// (Overview / Pricing / Description & FAQ / Requirements) — see domain.Gig.
+type createGigRequest struct {
+	FiverrAccountID   string              `json:"fiverr_account_id"`
+	Title             string              `json:"title"`
+	Category          string              `json:"category"`
+	SubCategory       string              `json:"sub_category"`
+	Tags              []string            `json:"tags"`
+	BasePriceCents    int64               `json:"base_price_cents"`
+	Currency          string              `json:"currency"`
+	Packages          []domain.GigPackage `json:"packages"`
+	Description       string              `json:"description"`
+	FAQs              []domain.FAQ        `json:"faqs"`
+	BuyerRequirements string              `json:"buyer_requirements"`
+}
+
+func (h *ResourceHandlers) CreateGig(c *fiber.Ctx) error {
+	var req createGigRequest
+	if err := c.BodyParser(&req); err != nil {
+		return errJSON(c, fiber.StatusBadRequest, "invalid_body", "Could not parse request body.")
+	}
+	if req.FiverrAccountID == "" || req.Title == "" {
+		return errJSON(c, fiber.StatusBadRequest, "invalid_body", "fiverr_account_id and title are required.")
+	}
+	userID := auth.UserIDFromContext(c)
+
+	// Verify the account belongs to the caller before attaching a gig to it —
+	// UpsertGig itself doesn't check ownership, so this must happen here.
+	if _, err := h.store.GetFiverrAccount(c.Context(), req.FiverrAccountID, userID); err != nil {
+		return errJSON(c, fiber.StatusNotFound, "not_found", "Fiverr account not found.")
+	}
+
+	gig, err := h.store.UpsertGig(c.Context(), store.GigInput{
+		FiverrAccountID:   req.FiverrAccountID,
+		Title:             req.Title,
+		Category:          req.Category,
+		SubCategory:       req.SubCategory,
+		Tags:              req.Tags,
+		Status:            domain.GigStatusActive,
+		BasePriceCents:    req.BasePriceCents,
+		Currency:          req.Currency,
+		Packages:          req.Packages,
+		Description:       req.Description,
+		FAQs:              req.FAQs,
+		BuyerRequirements: req.BuyerRequirements,
+		Source:            domain.GigSourceManual,
+	})
+	if err != nil {
+		return errJSON(c, fiber.StatusInternalServerError, "internal_error", "Could not create gig.")
+	}
+	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
+		"gig":  gig,
+		"note": "Saved to your dashboard only. Use \"Copy to Fiverr\" on this gig to paste it into Fiverr's own gig editor — Fiverr has no gig-write API (docs/fiverr-api-capabilities.md).",
+	})
+}
+
 func (h *ResourceHandlers) ListGigs(c *fiber.Ctx) error {
 	gigs, err := h.store.ListGigs(c.Context(), auth.UserIDFromContext(c), c.Query("fiverr_account_id"))
 	if err != nil {
@@ -38,8 +94,11 @@ func (h *ResourceHandlers) ListGigs(c *fiber.Ctx) error {
 
 func (h *ResourceHandlers) GetGig(c *fiber.Ctx) error {
 	gig, err := h.store.GetGig(c.Context(), c.Params("id"), auth.UserIDFromContext(c))
-	if err != nil {
+	if err == store.ErrNotFound {
 		return errJSON(c, fiber.StatusNotFound, "not_found", "Gig not found.")
+	}
+	if err != nil {
+		return errJSON(c, fiber.StatusInternalServerError, "internal_error", "Could not load gig.")
 	}
 	return c.JSON(fiber.Map{"gig": gig})
 }
@@ -50,8 +109,11 @@ func (h *ResourceHandlers) PatchGig(c *fiber.Ctx) error {
 		return errJSON(c, fiber.StatusBadRequest, "invalid_body", "Could not parse request body.")
 	}
 	gig, err := h.store.PatchGig(c.Context(), c.Params("id"), auth.UserIDFromContext(c), patch)
-	if err != nil {
+	if err == store.ErrNotFound {
 		return errJSON(c, fiber.StatusNotFound, "not_found", "Gig not found.")
+	}
+	if err != nil {
+		return errJSON(c, fiber.StatusInternalServerError, "internal_error", "Could not update gig.")
 	}
 	return c.JSON(fiber.Map{"gig": gig, "note": "This updates our local copy only — Fiverr has no gig write API (docs/fiverr-api-capabilities.md), so this does not change your live Fiverr gig."})
 }
@@ -76,8 +138,11 @@ func (h *ResourceHandlers) ListOrders(c *fiber.Ctx) error {
 func (h *ResourceHandlers) GetOrder(c *fiber.Ctx) error {
 	userID := auth.UserIDFromContext(c)
 	order, err := h.store.GetOrder(c.Context(), c.Params("id"), userID)
-	if err != nil {
+	if err == store.ErrNotFound {
 		return errJSON(c, fiber.StatusNotFound, "not_found", "Order not found.")
+	}
+	if err != nil {
+		return errJSON(c, fiber.StatusInternalServerError, "internal_error", "Could not load order.")
 	}
 	requirements, err := h.store.ListOrderRequirements(c.Context(), order.ID)
 	if err != nil {
@@ -100,8 +165,11 @@ func (h *ResourceHandlers) PatchOrder(c *fiber.Ctx) error {
 	order, err := h.store.PatchOrder(c.Context(), c.Params("id"), auth.UserIDFromContext(c), store.OrderPatch{
 		Status: req.Status, Stage: req.Stage, DueAt: req.DueAt,
 	})
-	if err != nil {
+	if err == store.ErrNotFound {
 		return errJSON(c, fiber.StatusNotFound, "not_found", "Order not found.")
+	}
+	if err != nil {
+		return errJSON(c, fiber.StatusInternalServerError, "internal_error", "Could not update order.")
 	}
 	return c.JSON(fiber.Map{"order": order})
 }
@@ -146,8 +214,11 @@ func (h *ResourceHandlers) ListConversations(c *fiber.Ctx) error {
 
 func (h *ResourceHandlers) GetConversation(c *fiber.Ctx) error {
 	conv, err := h.store.GetConversation(c.Context(), c.Params("id"), auth.UserIDFromContext(c))
-	if err != nil {
+	if err == store.ErrNotFound {
 		return errJSON(c, fiber.StatusNotFound, "not_found", "Conversation not found.")
+	}
+	if err != nil {
+		return errJSON(c, fiber.StatusInternalServerError, "internal_error", "Could not load conversation.")
 	}
 	return c.JSON(fiber.Map{"conversation": conv})
 }
@@ -163,8 +234,12 @@ func (h *ResourceHandlers) ListMessages(c *fiber.Ctx) error {
 }
 
 func (h *ResourceHandlers) MarkConversationRead(c *fiber.Ctx) error {
-	if err := h.store.MarkConversationRead(c.Context(), c.Params("id"), auth.UserIDFromContext(c)); err != nil {
+	err := h.store.MarkConversationRead(c.Context(), c.Params("id"), auth.UserIDFromContext(c))
+	if err == store.ErrNotFound {
 		return errJSON(c, fiber.StatusNotFound, "not_found", "Conversation not found.")
+	}
+	if err != nil {
+		return errJSON(c, fiber.StatusInternalServerError, "internal_error", "Could not mark conversation read.")
 	}
 	return c.JSON(fiber.Map{"status": "read"})
 }

@@ -98,10 +98,14 @@ Normalized buyer, deduplicated per Fiverr account by `external_ref` (buyer usern
 | fiverr_account_id | uuid FK | |
 | external_ref | text nullable | gig URL/slug if the seller provided one |
 | title, description, category | text | |
+| sub_category | text | added in migration 0002, for the "Copy to Fiverr" gig-builder flow |
+| tags | text[] | search tags; added in migration 0002 |
 | status | text | `active`, `paused`, `denied`, `unknown` |
 | base_price_cents | integer | |
 | currency | text | default `usd` |
 | packages | jsonb | `[{name, price_cents, delivery_days, description}]` |
+| faqs | jsonb | `[{q,a}]`; added in migration 0002 |
+| buyer_requirements | text | what Fiverr's "Requirements" step asks the buyer for; added in migration 0002 |
 | metrics | jsonb | seller-entered/imported views/orders/rating snapshot; always carries `as_of` |
 | source | text | `manual` \| `csv_import` |
 

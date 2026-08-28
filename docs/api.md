@@ -40,8 +40,9 @@ Errors are structured:
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | GET | /gigs | session | Query: `fiverr_account_id`. |
+| POST | /gigs | session | Body mirrors Fiverr's own gig-wizard sections: `{fiverr_account_id, title, category, sub_category, tags[], base_price_cents, currency, packages[], description, faqs[], buyer_requirements}`. Creates a local draft only (`source=manual`) — see "Copy to Fiverr" below. |
 | GET | /gigs/:id | session | |
-| PATCH | /gigs/:id | session | Edits our local copy only — never writes to Fiverr (no write API exists). |
+| PATCH | /gigs/:id | session | Body: any subset of the POST /gigs fields. Edits our local copy only — never writes to Fiverr (no write API exists). |
 | GET | /orders | session | Query: `status`, `fiverr_account_id`, pagination. |
 | GET | /orders/:id | session | Includes requirements, timeline stage, linked conversation. |
 | PATCH | /orders/:id | session | Updates local `stage`/`status`/`due_at` — bookkeeping only. |

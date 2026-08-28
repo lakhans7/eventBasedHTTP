@@ -119,12 +119,12 @@ type OrderPatch struct {
 func (s *Store) PatchOrder(ctx context.Context, id, userID string, p OrderPatch) (*domain.Order, error) {
 	row := s.Pool.QueryRow(ctx, `
 		UPDATE orders o SET
-			status = COALESCE($3, status),
-			stage = COALESCE($4, stage),
-			due_at = COALESCE($5, due_at),
-			delivered_at = CASE WHEN $4 = 'delivered' THEN now() ELSE delivered_at END,
-			completed_at = CASE WHEN $4 = 'completed' THEN now() ELSE completed_at END,
-			cancelled_at = CASE WHEN $3 = 'cancelled' THEN now() ELSE cancelled_at END,
+			status = COALESCE($3, o.status),
+			stage = COALESCE($4, o.stage),
+			due_at = COALESCE($5, o.due_at),
+			delivered_at = CASE WHEN $4 = 'delivered' THEN now() ELSE o.delivered_at END,
+			completed_at = CASE WHEN $4 = 'completed' THEN now() ELSE o.completed_at END,
+			cancelled_at = CASE WHEN $3 = 'cancelled' THEN now() ELSE o.cancelled_at END,
 			updated_at = now()
 		FROM fiverr_accounts fa
 		WHERE o.id = $1 AND fa.id = o.fiverr_account_id AND fa.user_id = $2
