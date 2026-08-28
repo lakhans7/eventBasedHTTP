@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Fiverr Seller Hub</title>
+</head>
+<body>
+  <script src="/js/api.js"></script>
+  <script>
+    (async () => {
+      const user = await requireAuth().catch(() => null);
+      location.href = user ? "/dashboard.html" : "/login.html";
+    })();
+  </script>
+</body>
+</html>

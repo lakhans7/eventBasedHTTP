@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Inbox — Fiverr Seller Hub</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <main class="content">
+    <h1>Inbox</h1>
+    <p class="subtitle">Buyer conversations you've imported or entered manually. <a href="/settings.html">Add a message</a> if you don't see one.</p>
+
+    <div class="two-col">
+      <div class="card" style="padding:8px">
+        <ul class="conversation-list" id="conversation-list"><li class="muted" style="padding:12px">Loading…</li></ul>
+      </div>
+
+      <div class="card" id="thread-panel" style="display:none">
+        <h2 id="thread-title">Conversation</h2>
+        <div id="messages"></div>
+
+        <div class="ai-panel">
+          <h2>AI Assistant</h2>
+          <div class="field">
+            <label for="instruction">Instruction (optional)</label>
+            <input id="instruction" placeholder="e.g. Ask about their budget and timeline" />
+          </div>
+          <button id="generate-btn" class="btn btn-primary btn-sm">Generate draft</button>
+
+          <div id="draft-area" style="display:none" class="mt-16">
+            <div id="risk-flags"></div>
+            <textarea id="draft-text" rows="6" class="ai-draft"></textarea>
+            <div class="action-row">
+              <button id="regenerate-btn" class="btn btn-sm">Regenerate</button>
+              <button id="save-edit-btn" class="btn btn-sm">Save edit</button>
+              <button id="approve-btn" class="btn btn-primary btn-sm">Approve</button>
+              <button id="mark-sent-btn" class="btn btn-sm" style="display:none">I sent this on Fiverr — mark as sent</button>
+              <button id="reject-btn" class="btn btn-danger btn-sm">Reject</button>
+            </div>
+            <p class="info-note" id="ai-note" style="display:none"></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/nav.js"></script>
+  <script>
+    let currentConversationId = null;
+    let currentGenerationId = null;
+
+    async function loadConversations() {
+      const { conversations } = await apiJSON("/conversations");
+      const list = document.getElementById("conversation-list");
+      if (!conversations.length) {
+        list.innerHTML = '<li class="muted" style="padding:12px">No conversations yet.</li>';
+        return;
+      }
+      list.innerHTML = conversations
+        .map(
+          (c) =>
+            `<li data-id="${c.id}"><div class="name">Conversation ${c.id.slice(0, 8)} ${c.unread_count ? `<span class="badge badge-active">${c.unread_count}</span>` : ""}</div>` +
+            `<div class="preview">Last activity ${new Date(c.last_message_at).toLocaleString()}</div></li>`
+        )
+        .join("");
+      list.querySelectorAll("li[data-id]").forEach((li) => li.addEventListener("click", () => openConversation(li.dataset.id)));
+    }
+
+    async function openConversation(id) {
+      currentConversationId = id;
+      currentGenerationId = null;
+      document.querySelectorAll("#conversation-list li").forEach((li) => li.classList.toggle("active", li.dataset.id === id));
+      document.getElementById("thread-panel").style.display = "block";
+      document.getElementById("draft-area").style.display = "none";
+      document.getElementById("thread-title").textContent = "Conversation " + id.slice(0, 8);
+
+      await apiFetch(`/conversations/${id}/read`, { method: "POST" }).catch(() => {});
+      const { messages } = await apiJSON(`/conversations/${id}/messages`);
+      const container = document.getElementById("messages");
+      container.innerHTML = messages
+        .map((m) => `<div class="message-bubble message-${m.direction}">${escapeHTML(m.body)}</div>`)
+        .join("") || '<p class="muted">No messages yet.</p>';
+    }
+
+    function renderDraft(gen) {
+      currentGenerationId = gen.id;
+      document.getElementById("draft-area").style.display = "block";
+      document.getElementById("draft-text").value = gen.draft_output;
+      document.getElementById("risk-flags").innerHTML = (gen.risk_flags || [])
+        .map((f) => `<span class="badge badge-risk">${escapeHTML(f)}</span>`)
+        .join("");
+      document.getElementById("mark-sent-btn").style.display = gen.status === "approved" ? "inline-block" : "none";
+      document.getElementById("ai-note").style.display = "none";
+    }
+
+    async function generate(instruction) {
+      const gen = await apiJSON("/ai/generate-response", {
+        method: "POST",
+        body: { conversation_id: currentConversationId, instruction },
+      });
+      renderDraft(gen.generation);
+    }
+
+    document.getElementById("generate-btn").addEventListener("click", () => generate(document.getElementById("instruction").value));
+    document.getElementById("regenerate-btn").addEventListener("click", () => generate(document.getElementById("instruction").value));
+
+    document.getElementById("save-edit-btn").addEventListener("click", async () => {
+      const gen = await apiJSON(`/ai/generations/${currentGenerationId}`, { method: "PATCH", body: { edited_output: document.getElementById("draft-text").value } });
+      renderDraft(gen.generation);
+    });
+
+    document.getElementById("approve-btn").addEventListener("click", async () => {
+      const res = await apiJSON(`/ai/generations/${currentGenerationId}/approve`, { method: "POST" });
+      renderDraft(res.generation);
+      document.getElementById("ai-note").style.display = "block";
+      document.getElementById("ai-note").textContent = res.note;
+    });
+
+    document.getElementById("mark-sent-btn").addEventListener("click", async () => {
+      await apiJSON(`/ai/generations/${currentGenerationId}/mark-sent`, { method: "POST" });
+      document.getElementById("draft-area").style.display = "none";
+      openConversation(currentConversationId);
+    });
+
+    document.getElementById("reject-btn").addEventListener("click", async () => {
+      await apiJSON(`/ai/generations/${currentGenerationId}/reject`, { method: "POST" });
+      document.getElementById("draft-area").style.display = "none";
+    });
+
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+      renderShell("inbox.html");
+      await loadConversations();
+    })();
+  </script>
+</body>
+</html>

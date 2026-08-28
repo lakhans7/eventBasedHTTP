@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orders — Fiverr Seller Hub</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <main class="content">
+    <h1>Orders</h1>
+    <p class="subtitle">Order timeline: created → requirements received → in progress → delivered → revision → completed.</p>
+
+    <div class="card mb-16">
+      <table>
+        <thead><tr><th>Order</th><th>Amount</th><th>Status</th><th>Stage</th><th>Due</th><th></th></tr></thead>
+        <tbody id="orders-body"><tr><td colspan="6" class="muted">Loading…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card" id="detail-panel" style="display:none">
+      <h2 id="detail-title">Order</h2>
+      <div id="detail-body"></div>
+
+      <div class="field mt-16">
+        <label for="req-text">Add a requirement (paste buyer's brief)</label>
+        <textarea id="req-text" rows="3"></textarea>
+      </div>
+      <button id="add-req-btn" class="btn btn-sm">Save requirement</button>
+
+      <div class="action-row">
+        <button id="summarize-btn" class="btn btn-sm">AI: Summarize order</button>
+        <button id="extract-btn" class="btn btn-sm">AI: Extract requirements</button>
+        <button id="delivery-btn" class="btn btn-sm">AI: Draft delivery message</button>
+      </div>
+      <div id="ai-result" class="ai-draft mt-16" style="display:none"></div>
+    </div>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/nav.js"></script>
+  <script>
+    let selectedOrderId = null;
+
+    function statusBadge(status) {
+      const cls = { active: "badge-active", completed: "badge-completed", cancelled: "badge-cancelled", late: "badge-late" }[status] || "badge-status";
+      return `<span class="badge ${cls}">${escapeHTML(status)}</span>`;
+    }
+
+    async function loadOrders() {
+      const { orders } = await apiJSON("/orders");
+      const tbody = document.getElementById("orders-body");
+      if (!orders || !orders.length) {
+        tbody.innerHTML = '<tr><td colspan="6" class="muted">No orders yet. Add one from Settings → Import.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = orders
+        .map(
+          (o) =>
+            `<tr><td>#${(o.external_ref || o.id).slice(0, 8)}</td><td>${formatCents(o.amount_cents, o.currency)}</td>` +
+            `<td>${statusBadge(o.status)}</td><td>${escapeHTML(o.stage)}</td><td>${o.due_at ? new Date(o.due_at).toLocaleDateString() : "—"}</td>` +
+            `<td><button class="btn btn-sm" data-id="${o.id}">View</button></td></tr>`
+        )
+        .join("");
+      tbody.querySelectorAll("button[data-id]").forEach((b) => b.addEventListener("click", () => openOrder(b.dataset.id)));
+    }
+
+    async function openOrder(id) {
+      selectedOrderId = id;
+      const { order, requirements } = await apiJSON(`/orders/${id}`);
+      document.getElementById("detail-panel").style.display = "block";
+      document.getElementById("detail-title").textContent = "Order #" + (order.external_ref || order.id.slice(0, 8));
+      document.getElementById("detail-body").innerHTML =
+        `<p>${statusBadge(order.status)} · Stage: ${escapeHTML(order.stage)} · ${formatCents(order.amount_cents, order.currency)}</p>` +
+        "<h2>Requirements</h2>" +
+        (requirements.length
+          ? requirements.map((r) => `<div class="ai-draft mt-16">${escapeHTML(r.raw_text)}</div>`).join("")
+          : '<p class="muted">None recorded yet.</p>');
+      document.getElementById("ai-result").style.display = "none";
+    }
+
+    document.getElementById("add-req-btn").addEventListener("click", async () => {
+      const text = document.getElementById("req-text").value.trim();
+      if (!text || !selectedOrderId) return;
+      await apiJSON(`/orders/${selectedOrderId}/requirements`, { method: "POST", body: { raw_text: text } });
+      document.getElementById("req-text").value = "";
+      openOrder(selectedOrderId);
+    });
+
+    function showAIResult(text) {
+      const el = document.getElementById("ai-result");
+      el.style.display = "block";
+      el.textContent = text;
+    }
+
+    document.getElementById("summarize-btn").addEventListener("click", async () => {
+      const res = await apiJSON("/ai/summarize-order", { method: "POST", body: { order_id: selectedOrderId } });
+      showAIResult(res.generation.draft_output);
+    });
+    document.getElementById("extract-btn").addEventListener("click", async () => {
+      const { requirements } = await apiJSON(`/orders/${selectedOrderId}`);
+      if (!requirements.length) return showAIResult("Add a requirement first.");
+      const res = await apiJSON("/ai/extract-requirements", { method: "POST", body: { order_requirement_id: requirements[requirements.length - 1].id } });
+      showAIResult(res.generation.draft_output);
+    });
+    document.getElementById("delivery-btn").addEventListener("click", async () => {
+      const res = await apiJSON("/ai/delivery-message", { method: "POST", body: { order_id: selectedOrderId } });
+      showAIResult(res.generation.draft_output);
+    });
+
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+      renderShell("orders.html");
+      await loadOrders();
+      const urlId = new URLSearchParams(location.search).get("id");
+      if (urlId) openOrder(urlId);
+    })();
+  </script>
+</body>
+</html>

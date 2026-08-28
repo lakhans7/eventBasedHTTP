@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Analytics — Fiverr Seller Hub</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <main class="content">
+    <h1>Analytics</h1>
+    <p class="subtitle" id="as-of">Computed from your imported/entered data only — Fiverr has no live reporting API.</p>
+
+    <div class="grid grid-4 mb-16">
+      <div class="card"><div class="stat-label">Total Revenue</div><div class="stat-value" id="revenue">—</div></div>
+      <div class="card"><div class="stat-label">Avg. Order Value</div><div class="stat-value" id="aov">—</div></div>
+      <div class="card"><div class="stat-label">Completion Rate</div><div class="stat-value" id="completion">—</div></div>
+      <div class="card"><div class="stat-label">Cancellation Rate</div><div class="stat-value" id="cancellation">—</div></div>
+    </div>
+    <div class="grid grid-4 mb-16">
+      <div class="card"><div class="stat-label">Orders</div><div class="stat-value" id="orders-total">—</div></div>
+      <div class="card"><div class="stat-label">Average Rating</div><div class="stat-value" id="rating">—</div></div>
+      <div class="card"><div class="stat-label">Reviews</div><div class="stat-value" id="review-count">—</div></div>
+      <div class="card"><div class="stat-label">Repeat Buyers</div><div class="stat-value" id="repeat">—</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Revenue by day</h2>
+      <table>
+        <thead><tr><th>Date</th><th>Revenue</th></tr></thead>
+        <tbody id="revenue-body"><tr><td colspan="2" class="muted">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/nav.js"></script>
+  <script>
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+      renderShell("analytics.html");
+
+      const o = await apiJSON("/analytics/overview");
+      document.getElementById("as-of").textContent = o.note + " As of " + new Date(o.as_of).toLocaleString() + ".";
+      document.getElementById("revenue").textContent = formatCents(o.revenue_total_cents);
+      document.getElementById("aov").textContent = formatCents(o.average_order_value_cents);
+      document.getElementById("completion").textContent = o.completion_rate_percent + "%";
+      document.getElementById("cancellation").textContent = o.cancellation_rate_percent + "%";
+      document.getElementById("orders-total").textContent = o.orders_total;
+      document.getElementById("rating").textContent = o.review_count ? o.average_rating.toFixed(2) : "—";
+      document.getElementById("review-count").textContent = o.review_count;
+      document.getElementById("repeat").textContent = o.repeat_buyer_count;
+
+      const { points } = await apiJSON("/analytics/revenue-over-time");
+      const tbody = document.getElementById("revenue-body");
+      tbody.innerHTML = points && points.length
+        ? points.map((p) => `<tr><td>${p.date}</td><td>${formatCents(p.value)}</td></tr>`).join("")
+        : '<tr><td colspan="2" class="muted">No order data yet.</td></tr>';
+    })();
+  </script>
+</body>
+</html>

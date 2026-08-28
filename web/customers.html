@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Customers — Fiverr Seller Hub</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <main class="content">
+    <h1>Customers</h1>
+    <p class="subtitle">Buyers you've entered manually or imported from an order/message CSV.</p>
+
+    <div class="card">
+      <table>
+        <thead><tr><th>Username</th><th>Display name</th><th>Notes</th></tr></thead>
+        <tbody id="customers-body"><tr><td colspan="3" class="muted">Loading…</td></tr></tbody>
+      </table>
+    </div>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/nav.js"></script>
+  <script>
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+      renderShell("customers.html");
+      const { customers } = await apiJSON("/customers");
+      const tbody = document.getElementById("customers-body");
+      tbody.innerHTML = customers && customers.length
+        ? customers.map((c) => `<tr><td>${escapeHTML(c.external_ref)}</td><td>${escapeHTML(c.display_name)}</td><td>${escapeHTML(c.notes || "")}</td></tr>`).join("")
+        : '<tr><td colspan="3" class="muted">No customers yet.</td></tr>';
+    })();
+  </script>
+</body>
+</html>

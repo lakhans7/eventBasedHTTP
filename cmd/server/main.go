@@ -1,74 +1,131 @@
+// Command server runs the HTTP API described in docs/api.md.
 package main
 
 import (
-	"github.com/gofiber/fiber/v2"
-	"github.com/myproject/internal/handler"
-	"github.com/myproject/internal/logger"
-	"github.com/myproject/internal/queue"
+	"context"
 	"log"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/hibiken/asynq"
+	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
+
+	aiapi "github.com/lakhans7/eventbasedhttp/internal/ai"
+	"github.com/lakhans7/eventbasedhttp/internal/analytics"
+	"github.com/lakhans7/eventbasedhttp/internal/api"
+	"github.com/lakhans7/eventbasedhttp/internal/audit"
+	authapi "github.com/lakhans7/eventbasedhttp/internal/auth"
+	"github.com/lakhans7/eventbasedhttp/internal/config"
+	"github.com/lakhans7/eventbasedhttp/internal/db"
+	"github.com/lakhans7/eventbasedhttp/internal/logger"
+	"github.com/lakhans7/eventbasedhttp/internal/mailer"
+	notifyapi "github.com/lakhans7/eventbasedhttp/internal/notification"
+	"github.com/lakhans7/eventbasedhttp/internal/store"
 )
 
-/* 
-Main function for starting the HTTP server and setting up necessary components 
-*/
 func main() {
-	/* Initialize the logger */
-	/* This function sets up the logging system for the application 
-	 * It uses Zerolog for structured logging, providing easy-to-read logs.
-	 */
-	logger.InitLogger()
+	_ = godotenv.Load() // no-op if .env doesn't exist (e.g. in production, where env vars are injected)
 
-	/* Initialize the queue */
-	/* The queue is a mechanism where incoming events are temporarily stored before 
-	 * being processed by the worker pool. This could be a Redis, RabbitMQ, or in-memory queue.
-	 * In this example, we're using a simple in-memory queue.
-	 */
-	queue.InitQueue()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+	logger.Init(cfg.Env)
+	l := logger.Get()
 
-	/* Create a new Fiber instance */
-	/* Fiber is a web framework used to handle HTTP requests. It’s based on fasthttp, which makes it 
-	 * one of the fastest Go web frameworks. We’re creating a new Fiber app instance here.
-	 */
-	app := fiber.New()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	pool, err := db.Connect(ctx, cfg.DatabaseURL)
+	if err != nil {
+		cancel()
+		l.Fatal().Err(err).Msg("failed to connect to database")
+	}
+	if err := db.Migrate(ctx, pool, "./migrations"); err != nil {
+		cancel()
+		l.Fatal().Err(err).Msg("failed to run database migrations")
+	}
+	cancel()
+	defer pool.Close()
 
-	/* Register routes for HTTP messages */
-	/* These are the different HTTP methods (GET, POST, PUT, PATCH, DELETE) 
-	 * that will handle the corresponding routes. Each route triggers the specific handler function.
-	 */
+	redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	defer redisClient.Close()
 
-	/* Register routes for GET requests */
-	/* This route will handle GET requests sent to "/event". It triggers the 
-	 * HandleGetEvent function, which will process the request and return a response.
-	 */
-	app.Get("/event", handler.HandleGetEvent)
+	asynqClient := asynq.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisAddr})
+	defer asynqClient.Close()
 
-	/* Register routes for POST requests */
-	/* This route will handle POST requests sent to "/event". It triggers the 
-	 * HandlePostEvent function, where we create an event and push it into the queue.
-	 */
-	app.Post("/event", handler.HandlePostEvent)
+	st := store.New(pool)
+	auditSvc := audit.NewService(pool)
+	mail := mailer.New(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom)
 
-	/* Register routes for PUT requests */
-	/* This route will handle PUT requests sent to "/event". It triggers the 
-	 * HandlePutEvent function, which will be similar to POST but will update existing events.
-	 */
-	app.Put("/event", handler.HandlePutEvent)
+	jwtIssuer := authapi.NewJWTIssuer(cfg.JWTSecret, cfg.AccessTokenTTL)
+	authRepo := authapi.NewRepository(pool)
+	googleOAuth := authapi.NewGoogleOAuth(cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GoogleRedirectURL)
+	authSvc := authapi.NewService(authRepo, jwtIssuer, mail, auditSvc, cfg.FrontendOrigin, cfg.RefreshTokenTTL)
+	authHandlers := authapi.NewHandlers(authSvc, googleOAuth, auditSvc, cfg.CookieDomain, cfg.CookieSecure, cfg.RefreshTokenTTL)
 
-	/* Register routes for PATCH requests */
-	/* This route will handle PATCH requests sent to "/event". It triggers the 
-	 * HandlePatchEvent function, typically used for partial updates of existing events.
-	 */
-	app.Patch("/event", handler.HandlePatchEvent)
+	fiverrHandlers := api.NewFiverrHandlers(st, auditSvc, asynqClient)
 
-	/* Register routes for DELETE requests */
-	/* This route will handle DELETE requests sent to "/event". It triggers the 
-	 * HandleDeleteEvent function, where we delete events.
-	 */
-	app.Delete("/event", handler.HandleDeleteEvent)
+	var llm aiapi.LLMClient = aiapi.MockClient{}
+	if cfg.AnthropicAPIKey != "" {
+		llm = aiapi.NewAnthropicClient(cfg.AnthropicAPIKey, cfg.AIModel)
+	} else {
+		l.Warn().Msg("ANTHROPIC_API_KEY not set — AI Assistant will return mock responses only")
+	}
+	// Placeholder per-token pricing until configured to match your actual Anthropic plan (docs/security.md cost control).
+	pricing := aiapi.Pricing{InputPer1KUSD: 0.003, OutputPer1KUSD: 0.015}
+	aiSvc := aiapi.NewService(llm, st, cfg.AIMaxOutputTokens, cfg.AIDailyUserBudget, pricing)
+	aiHandlers := aiapi.NewHandlers(aiSvc, st, auditSvc)
 
-	/* Start the Fiber server */
-	/* The app.Listen(":3000") command starts the server, which listens on port 3000. 
-	 * If the server is unable to start, it will log an error and exit.
-	 */
-	log.Fatal(app.Listen(":3000"))
+	notifySvc := notifyapi.NewService(st, asynqClient, func(ctx context.Context, userID string) (string, error) {
+		u, err := authRepo.GetUserByID(ctx, userID)
+		if err != nil {
+			return "", err
+		}
+		return u.Email, nil
+	})
+	notifyHandlers := notifyapi.NewHandlers(st)
+
+	analyticsSvc := analytics.NewService(pool)
+	analyticsHandlers := analytics.NewHandlers(analyticsSvc)
+
+	auditHandlers := audit.NewHandlers(auditSvc)
+	resourceHandlers := api.NewResourceHandlers(st)
+	metrics := api.NewMetrics()
+
+	_ = notifySvc // wired for use by background jobs / future event-driven notifications
+
+	app := api.NewApp(api.Deps{
+		Config:            cfg,
+		Pool:              pool,
+		Redis:             redisClient,
+		JWTIssuer:         jwtIssuer,
+		AuthHandlers:      authHandlers,
+		AIHandlers:        aiHandlers,
+		FiverrHandlers:    fiverrHandlers,
+		NotifyHandlers:    notifyHandlers,
+		AnalyticsHandlers: analyticsHandlers,
+		AuditHandlers:     auditHandlers,
+		Resources:         resourceHandlers,
+		Metrics:           metrics,
+	})
+
+	go func() {
+		if err := app.Listen(":" + cfg.Port); err != nil {
+			l.Fatal().Err(err).Msg("server stopped")
+		}
+	}()
+	l.Info().Str("port", cfg.Port).Str("env", cfg.Env).Msg("server started")
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	l.Info().Msg("shutting down")
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer shutdownCancel()
+	if err := app.ShutdownWithContext(shutdownCtx); err != nil {
+		l.Error().Err(err).Msg("error during shutdown")
+	}
 }

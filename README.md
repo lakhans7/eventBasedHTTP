@@ -1,114 +1,114 @@
-# Go Event Processing Utility
+# Fiverr Seller Hub
 
-This Go-based utility provides a simple HTTP server that handles various types of events. It leverages the **Fiber** web framework for HTTP handling, **Zerolog** for structured logging, and an event queue system that processes events using a **worker pool**.
+A SaaS platform that helps a Fiverr seller manage and get AI assistance with their business —
+orders, gigs, buyer conversations, reviews, and analytics — from one dashboard.
 
-## Features
+**Read this first:** Fiverr does not publish a public API or OAuth program for third-party
+apps to connect a seller's account. See [`docs/fiverr-api-capabilities.md`](docs/fiverr-api-capabilities.md)
+for the research behind that conclusion and exactly what this changes about the design. In short:
+there is no "Connect Fiverr" OAuth button here, because Fiverr doesn't offer one. Instead, sellers
+label a Fiverr profile and bring their own data in via CSV import (exported from their own Fiverr
+dashboard) or by pasting messages/requirements manually. Everything downstream — the dashboard, AI
+assistant, analytics, notifications — works the same regardless of how the data got in, so a future
+official Fiverr API (or another marketplace's API) can be added later with no application-level
+rewrite (see `internal/marketplace`).
 
-- **HTTP Routes**: The utility supports various HTTP methods like GET, POST, PUT, PATCH, and DELETE.
-- **Event Queue**: When an event is received via HTTP, it is placed into a queue for further processing.
-- **Worker Pool**: The worker pool picks up events from the queue and processes them asynchronously.
-- **Structured Logging**: Logs are created using **Zerolog**, which outputs structured JSON logs.
-- **Extensibility**: Easily extendable to support additional event types, routes, and background workers.
+## Documentation
 
-## Architecture Overview
+| Doc | What's in it |
+|---|---|
+| [`docs/fiverr-api-capabilities.md`](docs/fiverr-api-capabilities.md) | Fiverr API research and capability matrix — read this first |
+| [`docs/architecture.md`](docs/architecture.md) | System architecture, layers, repository structure |
+| [`docs/database.md`](docs/database.md) | Full schema and data dictionary |
+| [`docs/api.md`](docs/api.md) | REST API specification |
+| [`docs/security.md`](docs/security.md) | Threat model, AI safety pipeline, prompt-injection defenses |
 
-1. **HTTP Server (Fiber)**: Handles incoming HTTP requests.
-2. **Event Queue**: Stores events that need to be processed. This can be an in-memory queue, Redis, or any other messaging system.
-3. **Worker Pool**: A pool of workers that pull events from the queue and process them asynchronously.
-4. **Logging**: All actions, errors, and events are logged using **Zerolog** for structured, JSON-based logging.
+## Stack
 
-## Project Structure
+- **Backend**: Go + [Fiber](https://gofiber.io) (kept from this repo's original stack)
+- **Database**: PostgreSQL via `pgx`, plain SQL migrations (no ORM, no migration framework — see `internal/db`)
+- **Queue**: Redis + [asynq](https://github.com/hibiken/asynq) for background jobs (CSV import processing, email)
+- **AI**: direct HTTPS calls to the Anthropic Messages API (`internal/ai`), with a mock client so the app runs without an API key
+- **Frontend**: plain HTML/CSS/vanilla JS in `web/`, no build step, served as static files by the API server
+- **Auth**: email/password (bcrypt) + Google OAuth (PKCE), JWT access tokens + rotating opaque refresh tokens
 
-. ├── cmd/ │ └── server/ │ └── main.go # Entry point of the application ├── internal/ │ ├── handler/ │ │ └── event_handlers.go # Handles incoming HTTP requests (GET, POST, PUT, PATCH, DELETE) │ ├── worker/ │ │ └── worker_pool.go # Worker pool that processes events from the queue │ ├── queue/ │ │ └── queue.go # Event queue for storing events before processing │ ├── logger/ │ │ └── logger.go # Logger setup using Zerolog │ └── event/ │ └── event.go # Defines event structure (ID, type, detail) ├── go.mod # Go module file, managing dependencies ├── go.sum # Auto-generated checksum file for dependencies └── README.md # Project documentation
+## Repository structure
 
+```
+cmd/server/      API process (HTTP)
+cmd/worker/      asynq background job processor
+internal/        see docs/architecture.md for the full layer breakdown
+migrations/      SQL migrations, applied automatically on server startup
+web/             static frontend (no build step)
+docs/            architecture, database, API, and security documentation
+```
 
-## Prerequisites
+## Local development
 
-- **Go 1.18+**: Make sure you have Go installed. You can download it from [the official site](https://go.dev/dl/).
-- **Dependencies**: This project uses several Go packages. These will be installed automatically by Go when you run the project.
+### Prerequisites
+- Go 1.24+
+- Docker (for Postgres/Redis via `docker-compose`) — or your own local Postgres 16+ / Redis 7+
 
-## Installation
+### Quick start with Docker
 
-1. Clone the repository:
-   git clone https://github.com/yourusername/go-event-processing.git
-   cd go-event-processing
+```bash
+cp .env.example .env
+docker compose up --build
+```
 
-Install dependencies:
-go mod tidy
-Running the Application
-Run the HTTP server:
+This starts Postgres, Redis, the API server (`:3000`), and the background worker. Migrations run
+automatically when the server starts. Open http://localhost:3000 — it redirects to the login page.
 
+### Running without Docker
 
-go run cmd/server/main.go
-This will start the server on http://localhost:3000.
+```bash
+cp .env.example .env   # edit DATABASE_URL / REDIS_ADDR if not using the defaults
+go run ./cmd/server     # API on :3000, runs migrations on startup
+go run ./cmd/worker     # in a second terminal — required for CSV imports to complete
+```
 
-Test the API Endpoints:
+Without `ANTHROPIC_API_KEY` set, the AI Assistant still works end-to-end but returns a clearly
+labeled mock response instead of a real model completion — useful for developing/testing the rest
+of the app without an API key. Without `SMTP_HOST` set, outbound email (verification, password
+reset) is logged to the console instead of sent.
 
-You can test the following routes using curl or Postman:
+### Environment variables
 
-GET /event: Fetch details about the event (can be extended later).
-POST /event: Create a new event and add it to the queue.
-PUT /event: Update an existing event.
-PATCH /event: Partially update an event.
-DELETE /event: Delete an event.
-Example POST request:
+See [`.env.example`](.env.example) for the full list with defaults and comments. Never commit `.env`.
 
-curl -X POST http://localhost:3000/event \
-     -d '{"type": "CREATE", "detail": "This is a new event"}' \
-     -H "Content-Type: application/json"
+## Testing
 
-Response:
-{
-  "status": "Event received",
-  "event": {
-    "id": "unique-event-id",
-    "type": "CREATE",
-    "detail": "This is a new event"
-  }
-}
-
-
-Logging
-This project uses Zerolog for structured logging. Logs will be printed to the console in JSON format, which makes it easier to integrate with log management tools like ELK (Elasticsearch, Logstash, and Kibana) or Grafana Loki.
-
-Example Log Output:
-{
-  "level": "info",
-  "timestamp": "2025-03-01T12:00:00Z",
-  "message": "Received new event",
-  "event_id": "unique-event-id"
-}
-
-Queue System
-The event queue stores incoming events for processing. In this initial version, it uses an in-memory queue. You can extend this to use Redis, RabbitMQ, or any other distributed queue for production environments.
-
-Worker Pool
-The worker pool processes events asynchronously. Each worker pulls an event from the queue, processes it, and logs the result. The worker pool can be scaled by increasing the number of workers based on the load.
-
-Extending the Application
-1. Add New Event Types
-To add new event types, simply update the event.Event struct to accommodate the new type. For example, you can add fields for new event attributes and adjust the event processing logic in the worker pool.
-
-2. Add More Routes
-To add more HTTP routes, simply create new handlers in the handler/event_handlers.go file and add them to the Fiber router in cmd/server/main.go.
-
-3. Replace In-Memory Queue
-For production, you may want to use a distributed queue like Redis or RabbitMQ. You can implement a new queue system by modifying internal/queue/queue.go.
-
-4. Scale Worker Pool
-You can scale the worker pool by adding more worker goroutines or adjusting the size of the worker pool. This can be done in internal/worker/worker_pool.go.
-
-Testing
-You can run tests for your application using the Go testing framework:
-
+```bash
+go vet ./...
 go test ./...
-Unit Tests
-Unit tests can be found in the respective directories (e.g., internal/handler, internal/worker, etc.). To test specific modules, you can run:
+```
 
-go test internal/handler
-License
-This project is licensed under the MIT License - see the LICENSE file for details.
+Pure unit tests (password hashing, JWT, CSRF, the AI prompt-injection corpus, CSV field parsing,
+token encryption) run with no external dependencies. Database-backed tests (in `internal/store` and
+`internal/marketplace/fiverr`) connect to `$DATABASE_URL` (default
+`postgres://postgres:postgres@localhost:5432/fiverr_saas_test?sslmode=disable`) and automatically
+`t.Skip` if no database is reachable, so `go test ./...` is safe to run with nothing else set up —
+CI (`.github/workflows/ci.yml`) provides a real Postgres/Redis and runs everything, including the
+database-backed tests.
 
-Acknowledgments
-Fiber: A fast and lightweight web framework for Go. Fiber Documentation
-Zerolog: A zero-allocation JSON logger. Zerolog Documentation
+## Known limitations (see docs for full detail)
+
+- **No live Fiverr sync.** Every number in the dashboard reflects the last CSV import or manual
+  entry, not Fiverr in real time. This is a Fiverr platform limitation, not a bug — see
+  `docs/fiverr-api-capabilities.md`.
+- **No programmatic message sending.** The AI Assistant only ever produces a draft; the seller
+  copies it into Fiverr's own inbox and confirms via "mark as sent" for record-keeping.
+- **Gig edits are local only.** There is no Fiverr gig-write API, so editing a gig here never
+  changes the live Fiverr listing.
+- **AI cost estimates use placeholder per-token pricing** (`cmd/server/main.go`) until you update it
+  to match your actual Anthropic plan.
+- The frontend is a functional MVP (plain HTML/CSS/JS), not a polished, fully responsive design-system
+  build — see product section 20 in the original brief for the long-term bar.
+
+## Roadmap
+
+- Phase 2: richer analytics, in-app + email notification triggers wired to more events, seller AI
+  knowledge base UI polish, order-timeline automation.
+- Phase 3: if/when Fiverr (or another marketplace, e.g. Upwork) ships a public API, implement a new
+  `marketplace.Provider` and enable live sync + programmatic sending behind explicit, auditable
+  opt-in — the rest of the application does not need to change.

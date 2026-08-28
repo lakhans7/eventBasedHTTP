@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Notifications — Fiverr Seller Hub</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <main class="content">
+    <h1>Notifications</h1>
+    <div class="card" style="padding:8px">
+      <ul class="conversation-list" id="list"><li class="muted" style="padding:12px">Loading…</li></ul>
+    </div>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/nav.js"></script>
+  <script>
+    async function load() {
+      const { notifications } = await apiJSON("/notifications");
+      const list = document.getElementById("list");
+      if (!notifications || !notifications.length) {
+        list.innerHTML = '<li class="muted" style="padding:12px">No notifications yet.</li>';
+        return;
+      }
+      list.innerHTML = notifications
+        .map(
+          (n) =>
+            `<li data-id="${n.id}" style="display:flex;justify-content:space-between;align-items:center">` +
+            `<div><div class="name">${escapeHTML(n.title)} ${n.read_at ? "" : '<span class="badge badge-active">new</span>'}</div>` +
+            `<div class="preview">${escapeHTML(n.body)} · ${new Date(n.created_at).toLocaleString()}</div></div>` +
+            (n.read_at ? "" : '<button class="btn btn-sm" data-read>Mark read</button>') +
+            "</li>"
+        )
+        .join("");
+      list.querySelectorAll("button[data-read]").forEach((btn) =>
+        btn.addEventListener("click", async (e) => {
+          const id = e.target.closest("li").dataset.id;
+          await apiFetch(`/notifications/${id}/read`, { method: "POST" });
+          load();
+        })
+      );
+    }
+
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+      renderShell("notifications.html");
+      await load();
+    })();
+  </script>
+</body>
+</html>

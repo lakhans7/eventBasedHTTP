@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Log in — Fiverr Seller Hub</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <div class="auth-page">
+    <div class="auth-card">
+      <h1>Welcome back</h1>
+      <p class="subtitle">Log in to manage your Fiverr business.</p>
+      <div id="error" class="error-banner" style="display:none"></div>
+      <form id="login-form">
+        <div class="field">
+          <label for="email">Email</label>
+          <input id="email" type="email" required autocomplete="email" />
+        </div>
+        <div class="field">
+          <label for="password">Password</label>
+          <input id="password" type="password" required autocomplete="current-password" />
+        </div>
+        <button type="submit" class="btn btn-primary" style="width:100%">Log in</button>
+      </form>
+      <button id="google-btn" class="btn" style="width:100%;margin-top:10px">Continue with Google</button>
+      <div class="auth-links">
+        <a href="/forgot-password.html">Forgot password?</a> ·
+        <a href="/register.html">Create an account</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/api.js"></script>
+  <script>
+    document.getElementById("google-btn").addEventListener("click", () => {
+      location.href = "/api/v1/auth/google/start";
+    });
+
+    document.getElementById("login-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errorEl = document.getElementById("error");
+      errorEl.style.display = "none";
+      try {
+        const data = await apiJSON("/auth/login", {
+          method: "POST",
+          body: { email: document.getElementById("email").value, password: document.getElementById("password").value },
+        });
+        setAccessToken(data.access_token);
+        location.href = "/dashboard.html";
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.style.display = "block";
+      }
+    });
+  </script>
+</body>
+</html>

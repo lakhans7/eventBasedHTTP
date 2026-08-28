@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Settings — Fiverr Seller Hub</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <main class="content">
+    <h1>Settings</h1>
+
+    <div class="card mb-16">
+      <h2>Fiverr profile</h2>
+      <p class="info-note">Fiverr does not offer a public API for third-party apps to connect a seller account (see docs/fiverr-api-capabilities.md). Instead, label your Fiverr username below, then import your own exported data (CSV) or paste messages manually.</p>
+      <div id="accounts-list" class="mt-16"></div>
+
+      <form id="add-account-form" class="mt-16">
+        <div class="field">
+          <label for="username">Fiverr username</label>
+          <input id="username" required placeholder="your_fiverr_username" />
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit">Add profile</button>
+      </form>
+    </div>
+
+    <div class="card mb-16" id="import-card" style="display:none">
+      <h2>Import data</h2>
+      <form id="import-form">
+        <div class="field">
+          <label for="account-select">Fiverr profile</label>
+          <select id="account-select"></select>
+        </div>
+        <div class="field">
+          <label for="import-type">Data type</label>
+          <select id="import-type">
+            <option value="gigs">Gigs (title,description,category,status,base_price_cents,currency)</option>
+            <option value="orders">Orders (customer_username,customer_display_name,external_ref,amount_cents,currency,status,stage,due_at)</option>
+            <option value="reviews">Reviews (rating,body,posted_at)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="csv-file">CSV file</label>
+          <input id="csv-file" type="file" accept=".csv" required />
+        </div>
+        <button class="btn btn-primary btn-sm" type="submit">Upload &amp; import</button>
+      </form>
+      <div id="import-status" class="mt-16"></div>
+
+      <h2 class="mt-16">Add a message manually</h2>
+      <form id="message-form">
+        <div class="field"><label for="msg-customer">Buyer username</label><input id="msg-customer" required /></div>
+        <div class="field">
+          <label for="msg-direction">Direction</label>
+          <select id="msg-direction"><option value="inbound">From buyer</option><option value="outbound">From me</option></select>
+        </div>
+        <div class="field"><label for="msg-body">Message</label><textarea id="msg-body" rows="3" required></textarea></div>
+        <button class="btn btn-sm" type="submit">Save message</button>
+      </form>
+    </div>
+
+    <div class="card mb-16">
+      <h2>AI knowledge base</h2>
+      <p class="subtitle">The AI Assistant uses this profile when drafting responses.</p>
+      <form id="prefs-form">
+        <div class="field"><label for="skills">Skills (comma-separated)</label><input id="skills" placeholder="Go, Python, Kubernetes" /></div>
+        <div class="field"><label for="tone">Preferred tone</label><input id="tone" value="professional but friendly" /></div>
+        <div class="grid grid-2">
+          <div class="field"><label for="min-project">Minimum project ($)</label><input id="min-project" type="number" min="0" /></div>
+          <div class="field"><label for="delivery-min">Typical delivery (days min–max)</label>
+            <div style="display:flex;gap:8px"><input id="delivery-min" type="number" min="1" /><input id="delivery-max" type="number" min="1" /></div>
+          </div>
+        </div>
+        <div class="field"><label for="restrictions">Hard restrictions</label><textarea id="restrictions" rows="2" placeholder="e.g. never discount, never guarantee same-day delivery"></textarea></div>
+        <button class="btn btn-primary btn-sm" type="submit">Save preferences</button>
+      </form>
+    </div>
+
+    <div class="card mb-16">
+      <h2>Security</h2>
+      <button id="logout-all-btn" class="btn btn-sm">Log out of all devices</button>
+    </div>
+
+    <div class="card">
+      <h2>Danger zone</h2>
+      <p class="subtitle">Deleting your account is a soft delete with a grace period.</p>
+      <button id="delete-account-btn" class="btn btn-danger btn-sm">Delete my account</button>
+    </div>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/nav.js"></script>
+  <script>
+    let accounts = [];
+
+    async function loadAccounts() {
+      const res = await apiJSON("/fiverr/accounts");
+      accounts = res.accounts || [];
+      const list = document.getElementById("accounts-list");
+      list.innerHTML = accounts.length
+        ? accounts
+            .map(
+              (a) =>
+                `<div class="card" style="margin-bottom:8px"><strong>${escapeHTML(a.username)}</strong> ` +
+                `<span class="badge badge-status">${escapeHTML(a.connection_method)}</span> ` +
+                `<span class="badge badge-active">${escapeHTML(a.status)}</span> ` +
+                `<button class="btn btn-sm btn-danger" data-disconnect="${a.id}">Disconnect</button></div>`
+            )
+            .join("")
+        : '<p class="muted">No Fiverr profile added yet.</p>';
+
+      list.querySelectorAll("button[data-disconnect]").forEach((btn) =>
+        btn.addEventListener("click", async () => {
+          await apiFetch(`/fiverr/accounts/${btn.dataset.disconnect}`, { method: "DELETE" });
+          loadAccounts();
+        })
+      );
+
+      const select = document.getElementById("account-select");
+      select.innerHTML = accounts.map((a) => `<option value="${a.id}">${escapeHTML(a.username)}</option>`).join("");
+      document.getElementById("import-card").style.display = accounts.length ? "block" : "none";
+    }
+
+    document.getElementById("add-account-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await apiJSON("/fiverr/accounts", { method: "POST", body: { username: document.getElementById("username").value } });
+      document.getElementById("username").value = "";
+      loadAccounts();
+    });
+
+    document.getElementById("import-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const fileInput = document.getElementById("csv-file");
+      const form = new FormData();
+      form.append("type", document.getElementById("import-type").value);
+      form.append("file", fileInput.files[0]);
+      const accountId = document.getElementById("account-select").value;
+      const statusEl = document.getElementById("import-status");
+      try {
+        const res = await apiJSON(`/fiverr/accounts/${accountId}/import`, { method: "POST", body: form });
+        statusEl.innerHTML = `<div class="success-banner">Import queued (job ${res.sync_job_id.slice(0, 8)}). Refresh Orders/Gigs/Reviews shortly.</div>`;
+      } catch (err) {
+        statusEl.innerHTML = `<div class="error-banner">${escapeHTML(err.message)}</div>`;
+      }
+    });
+
+    document.getElementById("message-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const accountId = document.getElementById("account-select").value;
+      await apiJSON(`/fiverr/accounts/${accountId}/messages`, {
+        method: "POST",
+        body: {
+          customer_username: document.getElementById("msg-customer").value,
+          direction: document.getElementById("msg-direction").value,
+          body: document.getElementById("msg-body").value,
+        },
+      });
+      document.getElementById("message-form").reset();
+      alert("Message saved. Check the Inbox.");
+    });
+
+    async function loadPreferences() {
+      const { preferences } = await apiJSON("/me/preferences");
+      document.getElementById("skills").value = (preferences.skills || []).join(", ");
+      document.getElementById("tone").value = preferences.tone || "";
+      document.getElementById("min-project").value = preferences.min_project_usd || 0;
+      document.getElementById("delivery-min").value = preferences.typical_delivery_days_min || 3;
+      document.getElementById("delivery-max").value = preferences.typical_delivery_days_max || 7;
+      document.getElementById("restrictions").value = preferences.restrictions || "";
+    }
+
+    document.getElementById("prefs-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      await apiJSON("/me/preferences", {
+        method: "PUT",
+        body: {
+          skills: document.getElementById("skills").value.split(",").map((s) => s.trim()).filter(Boolean),
+          tone: document.getElementById("tone").value,
+          min_project_usd: Number(document.getElementById("min-project").value) || 0,
+          typical_delivery_days_min: Number(document.getElementById("delivery-min").value) || 3,
+          typical_delivery_days_max: Number(document.getElementById("delivery-max").value) || 7,
+          restrictions: document.getElementById("restrictions").value,
+        },
+      });
+      alert("Preferences saved.");
+    });
+
+    document.getElementById("logout-all-btn").addEventListener("click", async () => {
+      await apiFetch("/auth/logout-all", { method: "POST" });
+      setAccessToken("");
+      location.href = "/login.html";
+    });
+
+    document.getElementById("delete-account-btn").addEventListener("click", async () => {
+      if (!confirm("This will schedule your account for deletion. Continue?")) return;
+      await apiFetch("/auth/account", { method: "DELETE" });
+      setAccessToken("");
+      location.href = "/login.html";
+    });
+
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+      renderShell("settings.html");
+      await loadAccounts();
+      await loadPreferences();
+    })();
+  </script>
+</body>
+</html>

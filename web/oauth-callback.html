@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Signing in… — Fiverr Seller Hub</title>
+</head>
+<body>
+  <script src="/js/api.js"></script>
+  <script>
+    // The Google OAuth callback hands the access token in a URL fragment
+    // (never sent to any server, never logged) rather than a query string.
+    const params = new URLSearchParams(location.hash.replace(/^#/, ""));
+    const token = params.get("access_token");
+    if (token) setAccessToken(token);
+    location.replace("/dashboard.html");
+  </script>
+</body>
+</html>

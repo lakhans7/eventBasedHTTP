@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dashboard — Fiverr Seller Hub</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <main class="content">
+    <h1 id="greeting">Good day</h1>
+    <p class="subtitle">Here's what's happening with your Fiverr business.</p>
+
+    <div class="grid grid-4 mb-16">
+      <div class="card"><div class="stat-label">Revenue</div><div class="stat-value" id="stat-revenue">—</div></div>
+      <div class="card"><div class="stat-label">Active Orders</div><div class="stat-value" id="stat-orders">—</div></div>
+      <div class="card"><div class="stat-label">Unread Messages</div><div class="stat-value" id="stat-unread">—</div></div>
+      <div class="card"><div class="stat-label">Average Rating</div><div class="stat-value" id="stat-rating">—</div></div>
+    </div>
+
+    <div class="two-col">
+      <div></div>
+      <div>
+        <div class="card mb-16" id="ai-nudge" style="display:none">
+          <h2>AI Assistant</h2>
+          <p id="ai-nudge-text"></p>
+          <a href="/inbox.html" class="btn btn-primary btn-sm">Review Messages</a>
+        </div>
+
+        <div class="card">
+          <h2>Upcoming Deadlines</h2>
+          <table>
+            <thead><tr><th>Order</th><th>Buyer</th><th>Due</th><th></th></tr></thead>
+            <tbody id="deadlines-body"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/nav.js"></script>
+  <script>
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+      renderShell("dashboard.html");
+      document.getElementById("greeting").textContent = "Good day, " + (user.name || user.email.split("@")[0]);
+
+      try {
+        const overview = await apiJSON("/analytics/overview");
+        document.getElementById("stat-revenue").textContent = formatCents(overview.revenue_total_cents);
+        document.getElementById("stat-orders").textContent = overview.orders_active;
+        document.getElementById("stat-rating").textContent = overview.review_count ? overview.average_rating.toFixed(1) : "—";
+      } catch (e) { /* leave placeholders */ }
+
+      try {
+        const { conversations } = await apiJSON("/conversations");
+        const unread = conversations.reduce((sum, c) => sum + (c.unread_count || 0), 0);
+        document.getElementById("stat-unread").textContent = unread;
+        if (unread > 0) {
+          document.getElementById("ai-nudge").style.display = "block";
+          document.getElementById("ai-nudge-text").textContent = `You have ${unread} unanswered buyer message${unread === 1 ? "" : "s"}.`;
+        }
+      } catch (e) { document.getElementById("stat-unread").textContent = "0"; }
+
+      try {
+        const { orders } = await apiJSON("/orders?status=active&limit=5");
+        const tbody = document.getElementById("deadlines-body");
+        const withDeadline = (orders || []).filter((o) => o.due_at);
+        if (!withDeadline.length) {
+          tbody.innerHTML = '<tr><td colspan="4" class="muted">No upcoming deadlines.</td></tr>';
+        } else {
+          tbody.innerHTML = withDeadline
+            .map((o) => {
+              const hours = Math.round((new Date(o.due_at) - new Date()) / 3600000);
+              const dueText = hours < 0 ? "Overdue" : `Due in ${hours}h`;
+              return `<tr><td>#${o.external_ref || o.id.slice(0, 8)}</td><td>${escapeHTML(o.customer_id)}</td><td>${dueText}</td>` +
+                `<td><a class="btn btn-sm" href="/orders.html?id=${o.id}">Open</a></td></tr>`;
+            })
+            .join("");
+        }
+      } catch (e) {
+        document.getElementById("deadlines-body").innerHTML = '<tr><td colspan="4" class="muted">Could not load orders.</td></tr>';
+      }
+    })();
+  </script>
+</body>
+</html>

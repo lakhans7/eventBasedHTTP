@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AI Assistant — Fiverr Seller Hub</title>
+  <link rel="stylesheet" href="/css/app.css" />
+</head>
+<body>
+  <main class="content">
+    <h1>AI Assistant</h1>
+    <p class="subtitle">Paste a conversation, order brief, or requirement, then ask a question. Every answer is a draft for you to review — nothing is ever sent automatically.</p>
+
+    <div class="card mb-16">
+      <div class="field">
+        <label for="context">Context (optional) — paste a buyer message, order brief, etc.</label>
+        <textarea id="context" rows="6" placeholder="Paste buyer conversation, requirements, or gig details here…"></textarea>
+      </div>
+      <div class="field">
+        <label for="question">Your question</label>
+        <input id="question" placeholder="e.g. Is this scope reasonable? / Write a response. / Summarize this order." />
+      </div>
+      <button id="ask-btn" class="btn btn-primary">Ask</button>
+    </div>
+
+    <div class="card" id="result-card" style="display:none">
+      <h2>Suggested answer</h2>
+      <div id="risk-flags"></div>
+      <div class="ai-draft" id="answer"></div>
+      <div class="action-row">
+        <button id="feedback-up" class="btn btn-sm">👍 Helpful</button>
+        <button id="feedback-down" class="btn btn-sm">👎 Not helpful</button>
+      </div>
+    </div>
+
+    <div class="card mt-16">
+      <h2>Try asking</h2>
+      <ul>
+        <li>"Write a response."</li>
+        <li>"Is this requirement clear?"</li>
+        <li>"What questions should I ask?"</li>
+        <li>"Summarize this order."</li>
+        <li>"Is this scope reasonable?"</li>
+        <li>"Create a delivery message."</li>
+        <li>"Make this response more professional."</li>
+      </ul>
+    </div>
+  </main>
+
+  <script src="/js/api.js"></script>
+  <script src="/js/nav.js"></script>
+  <script>
+    let lastGenerationId = null;
+
+    document.getElementById("ask-btn").addEventListener("click", async () => {
+      const question = document.getElementById("question").value.trim();
+      if (!question) return;
+      const btn = document.getElementById("ask-btn");
+      btn.disabled = true;
+      btn.textContent = "Thinking…";
+      try {
+        const res = await apiJSON("/ai/chat", { method: "POST", body: { question, context: document.getElementById("context").value } });
+        lastGenerationId = res.generation.id;
+        document.getElementById("result-card").style.display = "block";
+        document.getElementById("answer").textContent = res.generation.draft_output;
+        document.getElementById("risk-flags").innerHTML = (res.generation.risk_flags || [])
+          .map((f) => `<span class="badge badge-risk">${escapeHTML(f)}</span>`)
+          .join("");
+      } catch (e) {
+        alert(e.message);
+      } finally {
+        btn.disabled = false;
+        btn.textContent = "Ask";
+      }
+    });
+
+    function sendFeedback(rating) {
+      if (!lastGenerationId) return;
+      apiFetch(`/ai/generations/${lastGenerationId}/feedback`, { method: "POST", body: { rating } }).catch(() => {});
+    }
+    document.getElementById("feedback-up").addEventListener("click", () => sendFeedback(1));
+    document.getElementById("feedback-down").addEventListener("click", () => sendFeedback(-1));
+
+    (async () => {
+      const user = await requireAuth();
+      if (!user) return;
+      renderShell("ai-assistant.html");
+    })();
+  </script>
+</body>
+</html>
