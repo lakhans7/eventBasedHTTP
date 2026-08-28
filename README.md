@@ -22,6 +22,7 @@ rewrite (see `internal/marketplace`).
 | [`docs/database.md`](docs/database.md) | Full schema and data dictionary |
 | [`docs/api.md`](docs/api.md) | REST API specification |
 | [`docs/security.md`](docs/security.md) | Threat model, AI safety pipeline, prompt-injection defenses |
+| [`docs/deployment.md`](docs/deployment.md) | Deploying to Fly.io — get a real public URL |
 
 ## Stack
 
@@ -62,7 +63,7 @@ automatically when the server starts. Open http://localhost:3000 — it redirect
 ### Running without Docker
 
 ```bash
-cp .env.example .env   # edit DATABASE_URL / REDIS_ADDR if not using the defaults
+cp .env.example .env   # edit DATABASE_URL / REDIS_URL if not using the defaults
 go run ./cmd/server     # API on :3000, runs migrations on startup
 go run ./cmd/worker     # in a second terminal — required for CSV imports to complete
 ```
@@ -75,6 +76,12 @@ reset) is logged to the console instead of sent.
 ### Environment variables
 
 See [`.env.example`](.env.example) for the full list with defaults and comments. Never commit `.env`.
+
+## Deploying
+
+See [`docs/deployment.md`](docs/deployment.md) for the full Fly.io walkthrough — provisioning
+Postgres/Redis, secrets, and `fly deploy` — to get a real, persistent public URL. `fly.toml` is
+already set up for it; you just need a Fly.io account.
 
 ## Testing
 

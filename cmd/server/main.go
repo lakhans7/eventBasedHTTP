@@ -20,6 +20,7 @@ import (
 	authapi "github.com/lakhans7/eventbasedhttp/internal/auth"
 	"github.com/lakhans7/eventbasedhttp/internal/config"
 	"github.com/lakhans7/eventbasedhttp/internal/db"
+	"github.com/lakhans7/eventbasedhttp/internal/jobs"
 	"github.com/lakhans7/eventbasedhttp/internal/logger"
 	"github.com/lakhans7/eventbasedhttp/internal/mailer"
 	notifyapi "github.com/lakhans7/eventbasedhttp/internal/notification"
@@ -49,10 +50,18 @@ func main() {
 	cancel()
 	defer pool.Close()
 
-	redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	redisOpt, err := redis.ParseURL(cfg.RedisURL)
+	if err != nil {
+		l.Fatal().Err(err).Msg("invalid REDIS_URL")
+	}
+	redisClient := redis.NewClient(redisOpt)
 	defer redisClient.Close()
 
-	asynqClient := asynq.NewClient(asynq.RedisClientOpt{Addr: cfg.RedisAddr})
+	asynqRedisOpt, err := jobs.RedisClientOpt(cfg.RedisURL)
+	if err != nil {
+		l.Fatal().Err(err).Msg("invalid REDIS_URL")
+	}
+	asynqClient := asynq.NewClient(asynqRedisOpt)
 	defer asynqClient.Close()
 
 	st := store.New(pool)

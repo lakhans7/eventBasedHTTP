@@ -37,8 +37,13 @@ func main() {
 	st := store.New(pool)
 	mail := mailer.New(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPFrom)
 
+	redisOpt, err := jobs.RedisClientOpt(cfg.RedisURL)
+	if err != nil {
+		l.Fatal().Err(err).Msg("worker: invalid REDIS_URL")
+	}
+
 	srv := asynq.NewServer(
-		asynq.RedisClientOpt{Addr: cfg.RedisAddr},
+		redisOpt,
 		asynq.Config{
 			Concurrency: 10,
 			// Fiverr has no API to hammer, but downstream services (SMTP, Anthropic)

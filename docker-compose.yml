@@ -28,12 +28,12 @@ services:
   app:
     build:
       context: .
-      target: server
+    command: ["./server"]
     env_file:
       - .env
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/fiverr_saas?sslmode=disable
-      REDIS_ADDR: redis:6379
+      REDIS_URL: redis://redis:6379
     ports:
       - "3000:3000"
     depends_on:
@@ -45,12 +45,12 @@ services:
   worker:
     build:
       context: .
-      target: worker
+    command: ["./worker"]
     env_file:
       - .env
     environment:
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/fiverr_saas?sslmode=disable
-      REDIS_ADDR: redis:6379
+      REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
         condition: service_healthy

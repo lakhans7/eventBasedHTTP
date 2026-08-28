@@ -1,0 +1,54 @@
+# Fly.io app config. See docs/deployment.md for the full deploy walkthrough.
+#
+# CHANGE `app` below to a globally-unique name before your first deploy
+# (fly.io rejects a name someone else already has) — then FRONTEND_ORIGIN
+# below must match it.
+
+app = "CHANGE-ME-fiverr-seller-hub"
+primary_region = "iad" # pick the region closest to you: `fly platform regions`
+
+[build]
+  dockerfile = "Dockerfile"
+
+# One image (see Dockerfile), two processes — Fly starts each with its own
+# command and its own machines. Only "app" gets a public HTTP service below;
+# "worker" runs the asynq job processor with no public port.
+[processes]
+  app = "./server"
+  worker = "./worker"
+
+[env]
+  APP_ENV = "production"
+  PORT = "3000"
+  COOKIE_SECURE = "true"
+  # Left empty on purpose: an empty COOKIE_DOMAIN scopes the cookie to
+  # whatever host the browser actually used (your *.fly.dev domain, or a
+  # custom domain later) instead of hardcoding one.
+  COOKIE_DOMAIN = ""
+  # Update this to match `app` above once you've renamed it.
+  FRONTEND_ORIGIN = "https://CHANGE-ME-fiverr-seller-hub.fly.dev"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+  processes = ["app"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  processes = ["app"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+  processes = ["worker"]

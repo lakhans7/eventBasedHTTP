@@ -14,7 +14,12 @@ type Config struct {
 	Port string
 
 	DatabaseURL string
-	RedisAddr   string
+	// RedisURL accepts a standard redis:// or rediss:// (TLS) URL, with
+	// optional username/password — so the same config works against a bare
+	// local Redis (docker-compose) and an authenticated, TLS-only managed
+	// Redis (Upstash, Redis Cloud, Fly Redis, ...) in production. See
+	// internal/jobs.RedisClientOpt for how it's parsed.
+	RedisURL string
 
 	JWTSecret       string
 	AccessTokenTTL  time.Duration
@@ -46,7 +51,7 @@ func Load() (*Config, error) {
 		Env:                getenv("APP_ENV", "development"),
 		Port:               getenv("PORT", "3000"),
 		DatabaseURL:        getenv("DATABASE_URL", "postgres://postgres:postgres@localhost:5432/fiverr_saas?sslmode=disable"),
-		RedisAddr:          getenv("REDIS_ADDR", "localhost:6379"),
+		RedisURL:           getenv("REDIS_URL", "redis://localhost:6379"),
 		JWTSecret:          getenv("JWT_SECRET", ""),
 		CookieDomain:       getenv("COOKIE_DOMAIN", "localhost"),
 		FrontendOrigin:     getenv("FRONTEND_ORIGIN", "http://localhost:3000"),
