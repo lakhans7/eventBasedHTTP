@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title id="page-title">Loading… — Shop</title>
+  <link rel="preconnect" href="https://checkout.razorpay.com" />
+  <style>
+    :root {
+      --ink: #1c1512;
+      --muted: #7a6e68;
+      --border: #e9e1dc;
+      --bg: #faf6f3;
+      --accent: #9c1f1f;
+      --accent-dark: #7a1717;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--ink);
+    }
+    .page {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 32px 20px 80px;
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
+      gap: 40px;
+    }
+    @media (max-width: 800px) {
+      .page { grid-template-columns: 1fr; padding: 0 0 60px; }
+    }
+    .gallery img {
+      width: 100%;
+      display: block;
+      border-radius: 0;
+    }
+    @media (min-width: 801px) {
+      .gallery img { border-radius: 14px; margin-bottom: 12px; }
+    }
+    .details { padding: 0 20px; }
+    @media (min-width: 801px) { .details { padding: 8px 0 0; } }
+
+    h1 { font-size: 1.6rem; margin: 0 0 8px; font-weight: 600; }
+    .price { font-size: 1.7rem; font-weight: 700; margin: 4px 0 4px; }
+    .tagline { color: var(--muted); font-size: 0.92rem; margin: 0 0 24px; }
+
+    label { display: block; font-size: 0.82rem; font-weight: 600; margin: 18px 0 8px; color: #4a423e; }
+    .sizes { display: flex; gap: 8px; flex-wrap: wrap; }
+    .size-btn {
+      border: 1px solid var(--border);
+      background: #fff;
+      padding: 10px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 0.92rem;
+      min-width: 52px;
+    }
+    .size-btn.selected { border-color: var(--accent); background: var(--accent); color: #fff; }
+
+    .qty-row { display: flex; align-items: center; gap: 12px; }
+    .qty-row button {
+      width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border);
+      background: #fff; font-size: 1.1rem; cursor: pointer;
+    }
+    .qty-row span { min-width: 24px; text-align: center; font-weight: 600; }
+
+    input, textarea {
+      width: 100%;
+      padding: 11px 13px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-family: inherit;
+      background: #fff;
+    }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+    .field { margin-bottom: 14px; }
+
+    .buy-btn {
+      width: 100%;
+      margin-top: 22px;
+      padding: 16px;
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1.02rem;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .buy-btn:hover { background: var(--accent-dark); }
+    .buy-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+    .secure-note { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 0.8rem; margin-top: 12px; }
+    .error-banner { background: #fdeceb; color: #9c1f1f; padding: 10px 14px; border-radius: 8px; font-size: 0.88rem; margin-top: 14px; display: none; }
+    .success-view { text-align: center; padding: 60px 20px; }
+    .success-view h2 { margin-bottom: 8px; }
+
+    footer {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.78rem;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="page" id="shop-view">
+    <div class="gallery">
+      <img src="/images/product-1.jpg" alt="Product photo 1" />
+      <img src="/images/product-2.jpg" alt="Product photo 2" />
+    </div>
+
+    <div class="details">
+      <h1 id="product-name">Loading…</h1>
+      <div class="price" id="price">—</div>
+      <p class="tagline">Free-size fit not needed — pick your size below. Ships in premium packaging.</p>
+
+      <form id="order-form">
+        <label for="size-group">Size</label>
+        <div class="sizes" id="size-group"></div>
+
+        <label>Quantity</label>
+        <div class="qty-row">
+          <button type="button" id="qty-minus">−</button>
+          <span id="qty-value">1</span>
+          <button type="button" id="qty-plus">+</button>
+        </div>
+
+        <label for="customer_name">Full name</label>
+        <div class="field"><input id="customer_name" required autocomplete="name" /></div>
+
+        <div class="grid-2">
+          <div class="field">
+            <label for="phone">Phone</label>
+            <input id="phone" required autocomplete="tel" placeholder="9876543210" />
+          </div>
+          <div class="field">
+            <label for="email">Email (optional)</label>
+            <input id="email" type="email" autocomplete="email" />
+          </div>
+        </div>
+
+        <label for="address_line">Delivery address</label>
+        <div class="field"><input id="address_line" required autocomplete="address-line1" placeholder="House no., street, area" /></div>
+
+        <div class="grid-3">
+          <div class="field"><input id="city" required autocomplete="address-level2" placeholder="City" /></div>
+          <div class="field"><input id="state" required autocomplete="address-level1" placeholder="State" /></div>
+          <div class="field"><input id="pincode" required inputmode="numeric" placeholder="Pincode" /></div>
+        </div>
+
+        <button type="submit" class="buy-btn" id="buy-btn">Pay <span id="buy-btn-amount"></span></button>
+        <div class="secure-note">🔒 Payments secured by Razorpay</div>
+        <div class="error-banner" id="error-banner"></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="success-view" id="success-view" style="display:none">
+    <h2>Order confirmed 🎉</h2>
+    <p>Thank you! Your payment was received and your order is being prepared for shipping.</p>
+    <p id="success-order-id" style="color:var(--muted);font-size:0.85rem"></p>
+  </div>
+
+  <footer>© <span id="store-name-footer"></span>. All payments processed securely by Razorpay.</footer>
+
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  <script>
+    let product = null;
+    let selectedSize = null;
+    let quantity = 1;
+
+    function formatMoney(cents, currency) {
+      return new Intl.NumberFormat("en-IN", { style: "currency", currency: currency || "INR" }).format((cents || 0) / 100);
+    }
+
+    function showError(message) {
+      const el = document.getElementById("error-banner");
+      el.textContent = message;
+      el.style.display = "block";
+    }
+    function clearError() {
+      document.getElementById("error-banner").style.display = "none";
+    }
+
+    function renderSizes() {
+      const group = document.getElementById("size-group");
+      group.innerHTML = "";
+      product.sizes.forEach((size) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "size-btn";
+        btn.textContent = size;
+        btn.addEventListener("click", () => {
+          selectedSize = size;
+          document.querySelectorAll(".size-btn").forEach((b) => b.classList.remove("selected"));
+          btn.classList.add("selected");
+        });
+        group.appendChild(btn);
+      });
+    }
+
+    function renderQuantity() {
+      document.getElementById("qty-value").textContent = quantity;
+      document.getElementById("buy-btn-amount").textContent = formatMoney(product.price_cents * quantity, product.currency);
+    }
+
+    document.getElementById("qty-minus").addEventListener("click", () => {
+      quantity = Math.max(1, quantity - 1);
+      renderQuantity();
+    });
+    document.getElementById("qty-plus").addEventListener("click", () => {
+      quantity = Math.min(10, quantity + 1);
+      renderQuantity();
+    });
+
+    async function loadProduct() {
+      const res = await fetch("/api/product");
+      product = await res.json();
+      document.getElementById("page-title").textContent = product.product_name + " — " + product.store_name;
+      document.getElementById("product-name").textContent = product.product_name;
+      document.getElementById("price").textContent = formatMoney(product.price_cents, product.currency);
+      document.getElementById("store-name-footer").textContent = product.store_name;
+      renderSizes();
+      renderQuantity();
+    }
+
+    document.getElementById("order-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      clearError();
+
+      if (!selectedSize) {
+        showError("Please select a size.");
+        return;
+      }
+      if (!product.razorpay_key) {
+        showError("Payments are not configured on this store yet. Please check back soon.");
+        return;
+      }
+
+      const buyBtn = document.getElementById("buy-btn");
+      buyBtn.disabled = true;
+
+      const payload = {
+        customer_name: document.getElementById("customer_name").value,
+        phone: document.getElementById("phone").value,
+        email: document.getElementById("email").value,
+        address_line: document.getElementById("address_line").value,
+        city: document.getElementById("city").value,
+        state: document.getElementById("state").value,
+        pincode: document.getElementById("pincode").value,
+        size: selectedSize,
+        quantity: quantity,
+      };
+
+      try {
+        const res = await fetch("/api/order", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Could not start payment.");
+
+        const rzp = new Razorpay({
+          key: data.razorpay_key,
+          amount: data.amount_cents,
+          currency: data.currency,
+          name: product.store_name,
+          description: product.product_name + " (" + selectedSize + " x" + quantity + ")",
+          order_id: data.razorpay_order_id,
+          prefill: {
+            name: payload.customer_name,
+            email: payload.email,
+            contact: payload.phone,
+          },
+          theme: { color: "#9c1f1f" },
+          handler: async function (response) {
+            try {
+              const verifyRes = await fetch("/api/verify", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                }),
+              });
+              if (!verifyRes.ok) throw new Error("verification failed");
+              document.getElementById("shop-view").style.display = "none";
+              document.getElementById("success-view").style.display = "block";
+              document.getElementById("success-order-id").textContent = "Payment ID: " + response.razorpay_payment_id;
+            } catch (err) {
+              showError("Payment succeeded but we couldn't confirm it automatically. Please contact us with your payment ID: " + response.razorpay_payment_id);
+            }
+          },
+          modal: {
+            ondismiss: function () {
+              buyBtn.disabled = false;
+            },
+          },
+        });
+        rzp.on("payment.failed", function () {
+          showError("Payment failed. Please try again.");
+          buyBtn.disabled = false;
+        });
+        rzp.open();
+      } catch (err) {
+        showError(err.message);
+      } finally {
+        buyBtn.disabled = false;
+      }
+    });
+
+    loadProduct().catch(() => showError("Could not load product details. Please refresh the page."));
+  </script>
+</body>
+</html>

@@ -1,114 +1,134 @@
-# Go Event Processing Utility
+# Single-Product Shop
 
-This Go-based utility provides a simple HTTP server that handles various types of events. It leverages the **Fiber** web framework for HTTP handling, **Zerolog** for structured logging, and an event queue system that processes events using a **worker pool**.
+A single-page storefront for one product, with a real Razorpay checkout integration:
+server-decided pricing (₹799, fixed), size selection (S/M/L/XL/XXL/XXXL), and signature-verified
+payment confirmation.
 
-## Features
+## ⚠️ Before you sell anything: product photos
 
-- **HTTP Routes**: The utility supports various HTTP methods like GET, POST, PUT, PATCH, and DELETE.
-- **Event Queue**: When an event is received via HTTP, it is placed into a queue for further processing.
-- **Worker Pool**: The worker pool picks up events from the queue and processes them asynchronously.
-- **Structured Logging**: Logs are created using **Zerolog**, which outputs structured JSON logs.
-- **Extensibility**: Easily extendable to support additional event types, routes, and background workers.
+The two product photos in `web/images/` are cropped from a screenshot of a wholesale/ODM
+supplier listing (visible watermark-free supplier branding, "MOQ: 100", "Send inquiry" —
+consistent with an Alibaba-style B2B listing). Those are almost certainly the **manufacturer's
+marketing photography**, not photos you have a license to use on your own storefront. Before
+this goes live:
 
-## Architecture Overview
+- Replace them with photos you own the rights to — your own product photography, or images
+  explicitly licensed to you by the supplier (some wholesale suppliers do grant resale/marketing
+  rights when you place an order — confirm this with them in writing, don't assume it).
+- Using someone else's commercial photography without permission is a real copyright exposure,
+  independent of anything about the product itself.
 
-1. **HTTP Server (Fiber)**: Handles incoming HTTP requests.
-2. **Event Queue**: Stores events that need to be processed. This can be an in-memory queue, Redis, or any other messaging system.
-3. **Worker Pool**: A pool of workers that pull events from the queue and process them asynchronously.
-4. **Logging**: All actions, errors, and events are logged using **Zerolog** for structured, JSON-based logging.
+Nothing about *selling lingerie* is unusual here — it's a completely mainstream retail category
+in India (Clovia, Zivame, Myntra, etc. all sell similar sheer/lace styles) and a normal Razorpay
+merchant category ("Apparel & Fashion" / "Clothing"). The photo-licensing issue above is the only
+thing to actually resolve before launch.
 
-## Project Structure
+## How it works
 
-. ├── cmd/ │ └── server/ │ └── main.go # Entry point of the application ├── internal/ │ ├── handler/ │ │ └── event_handlers.go # Handles incoming HTTP requests (GET, POST, PUT, PATCH, DELETE) │ ├── worker/ │ │ └── worker_pool.go # Worker pool that processes events from the queue │ ├── queue/ │ │ └── queue.go # Event queue for storing events before processing │ ├── logger/ │ │ └── logger.go # Logger setup using Zerolog │ └── event/ │ └── event.go # Defines event structure (ID, type, detail) ├── go.mod # Go module file, managing dependencies ├── go.sum # Auto-generated checksum file for dependencies └── README.md # Project documentation
+1. Buyer picks a size and quantity, fills in shipping details, and submits the form.
+2. The **server** — never the browser — computes the amount (`₹799 × quantity`) and creates a
+   Razorpay Order via Razorpay's Orders API (`internal/razorpay`). This is what stops someone
+   from tampering with the price in their browser's dev tools.
+3. Razorpay's own Checkout modal (loaded from `checkout.razorpay.com`, per their official
+   integration docs) collects card/UPI/etc. details — this app never sees or stores payment
+   details itself.
+4. On success, the browser calls back to `/api/verify`, which checks Razorpay's HMAC-SHA256
+   signature before marking the order paid. A payment is never trusted just because the browser
+   *says* it succeeded.
+5. Every order's shipping details are attached to its Razorpay Order's `notes` field, so the
+   **Razorpay dashboard itself is enough to fulfill orders** — no separate admin panel needed.
+   `orders.jsonl` (see "Persistence" below) is a local backup, not the primary record.
 
+## Setup
 
-## Prerequisites
+### 1. Get Razorpay keys
 
-- **Go 1.18+**: Make sure you have Go installed. You can download it from [the official site](https://go.dev/dl/).
-- **Dependencies**: This project uses several Go packages. These will be installed automatically by Go when you run the project.
+- Sign up at [razorpay.com](https://razorpay.com) (Indian business/bank details required for a
+  real, live account — but **test mode needs neither**).
+- Dashboard → **Test Mode** (toggle, top right) → Settings → API Keys → generate a test key pair.
+- Test mode lets you run the entire flow, including Checkout, with no real money moving —
+  Razorpay's test cards are documented at
+  https://razorpay.com/docs/payments/payments/test-card-upi-details/.
 
-## Installation
+### 2. Configure
 
-1. Clone the repository:
-   git clone https://github.com/yourusername/go-event-processing.git
-   cd go-event-processing
+```bash
+cp .env.example .env
+# fill in RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET with your test keys
+```
 
-Install dependencies:
-go mod tidy
-Running the Application
-Run the HTTP server:
+Customize `STORE_NAME` and `PRODUCT_NAME` in `.env` too. The price (₹799) is intentionally not
+an env var — see the comment in `internal/config/config.go` — edit `PriceCents` there directly
+if it ever needs to change, so a missing/misconfigured env var can never accidentally undercharge
+a customer.
 
+### 3. Run
 
-go run cmd/server/main.go
-This will start the server on http://localhost:3000.
+```bash
+go run ./cmd/server
+```
 
-Test the API Endpoints:
+Open http://localhost:3000. Use a Razorpay test card (e.g. `4111 1111 1111 1111`, any future
+expiry, any CVV) to complete a full test purchase.
 
-You can test the following routes using curl or Postman:
+### 4. Go live
 
-GET /event: Fetch details about the event (can be extended later).
-POST /event: Create a new event and add it to the queue.
-PUT /event: Update an existing event.
-PATCH /event: Partially update an event.
-DELETE /event: Delete an event.
-Example POST request:
+- Complete Razorpay's KYC/business verification (Dashboard → Account & Settings).
+- Switch `.env` to your **live** key pair.
+- Set `APP_ENV=production` (the app refuses to start in production without Razorpay keys set).
+- Optional but recommended: Dashboard → Settings → Webhooks → add
+  `https://<your-domain>/api/webhook/razorpay` for the `payment.captured` event, and set
+  `RAZORPAY_WEBHOOK_SECRET` to the secret Razorpay gives you — this is a safety net that marks
+  an order paid even if the buyer's browser closes right after paying, before it can call
+  `/api/verify`.
 
-curl -X POST http://localhost:3000/event \
-     -d '{"type": "CREATE", "detail": "This is a new event"}' \
-     -H "Content-Type: application/json"
+## Persistence
 
-Response:
-{
-  "status": "Event received",
-  "event": {
-    "id": "unique-event-id",
-    "type": "CREATE",
-    "detail": "This is a new event"
-  }
-}
+`orders.jsonl` (path configurable via `ORDERS_LOG_PATH`) is an append-only local file — see
+`internal/orders`. It's a convenience backup, not the source of truth (the Razorpay dashboard is)
+— which matters because:
 
+- On most container platforms (Fly.io, Render, Railway, etc.), local disk is **ephemeral** by
+  default — it's wiped on every redeploy and isn't shared across multiple machine instances.
+- If you want the local backup to actually persist, mount a real volume at the directory
+  `ORDERS_LOG_PATH` points to (the `Dockerfile` defaults it to `/app/data/orders.jsonl`).
+- If you don't set up a volume, that's fine — just rely on the Razorpay dashboard for order
+  fulfillment, which is why every order's details are written into the Razorpay Order's `notes`
+  in the first place.
 
-Logging
-This project uses Zerolog for structured logging. Logs will be printed to the console in JSON format, which makes it easier to integrate with log management tools like ELK (Elasticsearch, Logstash, and Kibana) or Grafana Loki.
+A real database was deliberately not added for one SKU at low volume — see the comment in
+`internal/orders/store.go`.
 
-Example Log Output:
-{
-  "level": "info",
-  "timestamp": "2025-03-01T12:00:00Z",
-  "message": "Received new event",
-  "event_id": "unique-event-id"
-}
+## Deploying
 
-Queue System
-The event queue stores incoming events for processing. In this initial version, it uses an in-memory queue. You can extend this to use Redis, RabbitMQ, or any other distributed queue for production environments.
+Any container host works — `Dockerfile` is a standard single-binary Go image with no database
+dependency, so there's no Postgres/Redis to provision (unlike the sibling `fiverTest` branch's
+Fiverr platform, which does need those). Pick whichever you already use — Fly.io, Render,
+Railway, a VPS with `docker run`. Set the same environment variables from `.env.example` as
+secrets on whatever platform you pick, mount a volume at `ORDERS_LOG_PATH` if you want the local
+backup to survive redeploys, and you're running.
 
-Worker Pool
-The worker pool processes events asynchronously. Each worker pulls an event from the queue, processes it, and logs the result. The worker pool can be scaled by increasing the number of workers based on the load.
+## Testing
 
-Extending the Application
-1. Add New Event Types
-To add new event types, simply update the event.Event struct to accommodate the new type. For example, you can add fields for new event attributes and adjust the event processing logic in the worker pool.
-
-2. Add More Routes
-To add more HTTP routes, simply create new handlers in the handler/event_handlers.go file and add them to the Fiber router in cmd/server/main.go.
-
-3. Replace In-Memory Queue
-For production, you may want to use a distributed queue like Redis or RabbitMQ. You can implement a new queue system by modifying internal/queue/queue.go.
-
-4. Scale Worker Pool
-You can scale the worker pool by adding more worker goroutines or adjusting the size of the worker pool. This can be done in internal/worker/worker_pool.go.
-
-Testing
-You can run tests for your application using the Go testing framework:
-
+```bash
+go vet ./...
 go test ./...
-Unit Tests
-Unit tests can be found in the respective directories (e.g., internal/handler, internal/worker, etc.). To test specific modules, you can run:
+```
 
-go test internal/handler
-License
-This project is licensed under the MIT License - see the LICENSE file for details.
+All tests are self-contained (no network, no real Razorpay account needed): HMAC signature
+verification tested against an independently-computed reference (`internal/razorpay`), the local
+order log's append/idempotency behavior (`internal/orders`), and the checkout API's input
+validation (`internal/shop`) — including confirming a tampered/invalid request is always rejected
+with `400` before the app would ever call Razorpay.
 
-Acknowledgments
-Fiber: A fast and lightweight web framework for Go. Fiber Documentation
-Zerolog: A zero-allocation JSON logger. Zerolog Documentation
+## Security notes
+
+- The Razorpay **key secret** never reaches the browser — only the public **key id** does
+  (Razorpay's own model: the key id is meant to be public, similar to a Stripe publishable key).
+- The amount charged is always server-computed from the fixed price and a bounds-checked quantity
+  (1–10) — never taken from the client request.
+- Every payment is confirmed via Razorpay's documented HMAC-SHA256 signature check
+  (`internal/razorpay.VerifyPaymentSignature`), not merely because the browser's success callback
+  fired.
+- Input (phone, pincode, size, quantity) is validated server-side — the HTML form's `required`
+  attributes are a UX nicety, not a security boundary, since anyone can call `/api/order` directly.
