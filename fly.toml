@@ -1,0 +1,44 @@
+# Fly.io app config. See "Deploying" in README.md for the full walkthrough.
+#
+# CHANGE `app` below to a globally-unique name before your first deploy
+# (fly.io rejects a name someone else already has), then update
+# FRONTEND_ORIGIN to match it.
+
+app = "CHANGE-ME-your-shop-name"
+primary_region = "bom" # Mumbai — closest to Razorpay/Indian buyers; `fly platform regions` for others
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  APP_ENV = "production"
+  PORT = "3000"
+  STORE_NAME = "Your Store Name"
+  PRODUCT_NAME = "Red Lace Nightdress"
+  CURRENCY = "INR"
+  FRONTEND_ORIGIN = "https://CHANGE-ME-your-shop-name.fly.dev"
+  ORDERS_LOG_PATH = "/app/data/orders.jsonl"
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "15s"
+    method = "GET"
+    timeout = "5s"
+    path = "/health"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+
+# Persists orders.jsonl across redeploys — see README.md "Persistence".
+# Create once with: fly volumes create shop_data --region bom --size 1
+[mounts]
+  source = "shop_data"
+  destination = "/app/data"

@@ -103,10 +103,35 @@ A real database was deliberately not added for one SKU at low volume — see the
 
 Any container host works — `Dockerfile` is a standard single-binary Go image with no database
 dependency, so there's no Postgres/Redis to provision (unlike the sibling `fiverTest` branch's
-Fiverr platform, which does need those). Pick whichever you already use — Fly.io, Render,
-Railway, a VPS with `docker run`. Set the same environment variables from `.env.example` as
-secrets on whatever platform you pick, mount a volume at `ORDERS_LOG_PATH` if you want the local
-backup to survive redeploys, and you're running.
+Fiverr platform, which does need those). `fly.toml` is set up for Fly.io specifically since it's
+the least setup for an app this size; Render/Railway/a VPS with `docker run` all work too — just
+set the same variables from `.env.example` as secrets/env vars there instead.
+
+### Fly.io
+
+```bash
+curl -L https://fly.io/install.sh | sh   # installs flyctl, if you don't have it
+fly auth login
+```
+
+1. Pick a unique app name and edit `fly.toml`: change `app = "..."` and `FRONTEND_ORIGIN` to match.
+2. `fly apps create <your-app-name>` (or `fly launch --no-deploy` and let it pick up `fly.toml`'s name).
+3. `fly volumes create shop_data --region bom --size 1` — backs the `orders.jsonl` local order
+   backup so it survives redeploys (see "Persistence" above). Skip this if you're relying on the
+   Razorpay dashboard alone for fulfillment; then also delete the `[mounts]` block in `fly.toml`.
+4. Set secrets:
+   ```bash
+   fly secrets set --app <your-app-name> \
+     RAZORPAY_KEY_ID="rzp_test_..." \
+     RAZORPAY_KEY_SECRET="..."
+   ```
+   (Switch to live keys and re-run once you're actually ready to take real payments — see "Go live" above.)
+5. `fly deploy --app <your-app-name>`
+6. `curl https://<your-app-name>.fly.dev/health` → `{"status":"ok"}`, then open it in a browser.
+
+I can't run this step myself or hand you back a link — it needs your Fly account, and this
+sandboxed session has no public networking of its own (see the "public link" conversation this
+came out of). Paste me the deploy output if anything fails and I'll fix it.
 
 ## Testing
 
